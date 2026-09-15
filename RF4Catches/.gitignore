@@ -1,7 +1,11 @@
-﻿/.idea/
-catches.db
-catches.db-shm
-catches.db-wal
+﻿# JetBrains Rider / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+*.db
+*.db-shm
+*.db-wal
 /Data/catch-images/
 /Data/ocr-samples/
 /bin/Debug/net10.0-windows/OpenCvSharp.dll
