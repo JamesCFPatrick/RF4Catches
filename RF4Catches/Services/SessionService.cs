@@ -22,15 +22,22 @@ public sealed class SessionService(
         {
             var profiles = await roiProfiles.GetAllAsync(cancellationToken);
             var catchOcr = ReadCatchFromScreen(capturePath, profiles);
+
+            if (catchOcr is null)
+                throw new InvalidOperationException("No catch card detected (icons not found).");
+
             var rarityRegion = profiles
                 .FirstOrDefault(p => string.Equals(p.Name, "Catch rarity", StringComparison.OrdinalIgnoreCase))
                 ?.Region;
+
             var detectedRarity = rarityRegion is null
                 ? null
                 : screenCaptureService.DetectTagRarity(capturePath, rarityRegion);
+
             var parsed = catchOcr.IsSplit
                 ? catchOcrParser.ParseFields(catchOcr.SpeciesText!, catchOcr.DetailsText!, detectedRarity)
                 : catchOcrParser.Parse(catchOcr.Result.Text, detectedRarity);
+
             return new CaptureTestResult(catchOcr, parsed);
         }
         finally
@@ -125,26 +132,43 @@ public sealed class SessionService(
     await _gate.WaitAsync(cancellationToken);
     try
     {
-        if (_activeSessionId is not { } sessionId) throw new InvalidOperationException("There is no active fishing session.");
+        if (_activeSessionId is not { } sessionId)
+            throw new InvalidOperationException("There is no active fishing session.");
+
         var capturePath = await screenCaptureService.CaptureVirtualScreenAsync(cancellationToken);
         var profiles = await roiProfiles.GetAllAsync(cancellationToken);
-        var catchOcr = ReadCatchFromScreen(capturePath, profiles);
 
-        var rarityRegion = profiles
-            .FirstOrDefault(profile => string.Equals(profile.Name, "Catch rarity", StringComparison.OrdinalIgnoreCase))
-            ?.Region;
-        var detectedRarity = rarityRegion is null
-            ? null
-            : screenCaptureService.DetectTagRarity(capturePath, rarityRegion);
-
-        var ocr = catchOcr.Result;
         await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var session = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(
             db.FishingSessions, s => s.Id == sessionId, cancellationToken);
+
         session.EndedAtUtc = DateTimeOffset.UtcNow;
         session.CapturePath = capturePath;
+
+        var catchOcr = ReadCatchFromScreen(capturePath, profiles);
+
+        if (catchOcr is null)
+        {
+            // No catch card visible – just end the session cleanly
+            await db.SaveChangesAsync(cancellationToken);
+            _activeSessionId = null;
+            logger.LogInformation("Fishing session {SessionId} ended (no catch card detected).", sessionId);
+            return session;
+        }
+
+        // Now we know catchOcr is not null → safe to use
+        var ocr = catchOcr.Result;
         session.RawOcrText = ocr.Text;
         session.OcrConfidence = ocr.Confidence;
+
+        // Declare detectedRarity here
+        var rarityRegion = profiles
+            .FirstOrDefault(p => string.Equals(p.Name, "Catch rarity", StringComparison.OrdinalIgnoreCase))
+            ?.Region;
+
+        var detectedRarity = rarityRegion is null
+            ? null
+            : screenCaptureService.DetectTagRarity(capturePath, rarityRegion);
 
         var parsedCatch = catchOcr.IsSplit
             ? catchOcrParser.ParseFields(catchOcr.SpeciesText!, catchOcr.DetailsText!, detectedRarity)
@@ -154,6 +178,7 @@ public sealed class SessionService(
         {
             var fishImageProfile = profiles
                 .FirstOrDefault(item => string.Equals(item.Name, "Fish image", StringComparison.OrdinalIgnoreCase));
+
             db.Catches.Add(new Models.Catch
             {
                 FishingSessionId = session.Id,
@@ -173,7 +198,10 @@ public sealed class SessionService(
         logger.LogInformation("Fishing session {SessionId} ended with OCR confidence {Confidence:P0}.", sessionId, ocr.Confidence);
         return session;
     }
-    finally { _gate.Release(); }
+    finally
+    {
+        _gate.Release();
+    }
 }
 
     /// <summary>
@@ -189,7 +217,7 @@ public sealed class SessionService(
         return await EndAndProcessAsync(cancellationToken);
     }
 
-    private CatchCardOcr ReadCatchFromScreen(string capturePath, IReadOnlyList<RoiProfile> profiles)
+    private CatchCardOcr? ReadCatchFromScreen(string capturePath, IReadOnlyList<RoiProfile> profiles)
     {
         var species = profiles.FirstOrDefault(p =>
                           string.Equals(p.Name, "Catch species", StringComparison.OrdinalIgnoreCase))
@@ -199,30 +227,21 @@ public sealed class SessionService(
                    ?? throw new InvalidOperationException("A 'Catch info' ROI profile is required.");
 
         var templatesDir = Path.Combine(environment.ContentRootPath, "data", "templates");
-        var bagIcon = screenCaptureService.FindIcon(capturePath, info.Region, Path.Combine(templatesDir, "bag.png"));
-        var rulerIcon = screenCaptureService.FindIcon(capturePath, info.Region, Path.Combine(templatesDir, "ruler.png"));
+        var bag = screenCaptureService.FindIcon(capturePath, info.Region, Path.Combine(templatesDir, "bag.png"));
+        var ruler = screenCaptureService.FindIcon(capturePath, info.Region, Path.Combine(templatesDir, "ruler.png"));
 
-        OcrRegion weightRegion, lengthRegion;
-        if (bagIcon is { } bag && rulerIcon is { } ruler)
-        {
-            const double weightOffsetX = 0.006;
-            const double lengthOffsetX = 0.006;
-            const double regionW = 0.065;
-            const double regionH = 0.030;
-            const double regionOffsetY = 0.010;
+        // ← Key change: no throw
+        if (bag is null || ruler is null)
+            return null;   // simply means "catch card not visible right now"
 
-            weightRegion = new OcrRegion(bag.X + weightOffsetX, bag.Y - regionOffsetY, regionW, regionH);
-            lengthRegion = new OcrRegion(ruler.X + lengthOffsetX, ruler.Y - regionOffsetY, regionW, regionH);
-        }
-        else
-        {
-            throw new InvalidOperationException("Icon detection failed. Check that data/templates/bag.png and ruler.png exist and match the current game UI.");
-        }
+        const double weightOffsetX = 0.01;
+        const double lengthOffsetX = 0.01;
+        const double regionW = 0.060;
+        const double regionH = 0.030;
+        const double regionOffsetY = 0.010;
 
-        logger.LogInformation(
-            "Icon detect — bag={Bag}, ruler={Ruler}, weight x={WX:F3} y={WY:F3}, length x={LX:F3} y={LY:F3}",
-            bagIcon is not null, rulerIcon is not null,
-            weightRegion.X, weightRegion.Y, lengthRegion.X, lengthRegion.Y);
+        var weightRegion = new OcrRegion(bag.Value.X + weightOffsetX, bag.Value.Y - regionOffsetY, regionW, regionH);
+        var lengthRegion = new OcrRegion(ruler.Value.X + lengthOffsetX, ruler.Value.Y - regionOffsetY, regionW, regionH);
 
         return ocrService.ReadRefinedCatch(capturePath, species.Region, weightRegion, lengthRegion);
     }

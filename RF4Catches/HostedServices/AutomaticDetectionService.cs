@@ -65,12 +65,85 @@ public sealed class AutomaticDetectionService(
     
 
     private async Task DetectAsync(
-        int requiredDetections,
-        TimeSpan sameSignatureCooldown,
-        CancellationToken cancellationToken)
+    int requiredDetections,
+    TimeSpan sameSignatureCooldown,
+    CancellationToken cancellationToken)
+{
+    if (sessionService.ActiveSessionId is null)
     {
-        if (sessionService.ActiveSessionId is null)
+        _candidateSignature = null;
+        _candidateCount = 0;
+        _lastProcessedSignature = null;
+        _lastProcessedAtUtc = null;
+        return;
+    }
+
+    var temporaryCapturePath =
+        await screenCaptureService.CaptureVirtualScreenAsync(cancellationToken, persist: false);
+    var capturePath = temporaryCapturePath;
+    var keepCapture = false;
+
+    try
+    {
+        var profiles = await roiProfiles.GetAllAsync(cancellationToken);
+
+        var hasRequiredProfiles =
+            profiles.Any(p => string.Equals(p.Name, "Catch species", StringComparison.OrdinalIgnoreCase)) &&
+            profiles.Any(p => string.Equals(p.Name, "Catch info", StringComparison.OrdinalIgnoreCase));
+
+        if (!hasRequiredProfiles)
         {
+            if (DateTimeOffset.UtcNow - _lastMissingProfileLogAtUtc >= TimeSpan.FromSeconds(30))
+            {
+                logger.LogError(
+                    "Automatic catch detection is paused because 'Catch species' and 'Catch info' profiles are required.");
+                _lastMissingProfileLogAtUtc = DateTimeOffset.UtcNow;
+            }
+            return;
+        }
+
+        var catchOcr = ReadCatchFromScreen(capturePath, profiles);
+
+        // ← Soft fail when no catch card / icons not found
+        if (catchOcr is null)
+            return;
+
+        var ocr = catchOcr.Result;
+
+        var rarityRegion = profiles
+            .FirstOrDefault(p => string.Equals(p.Name, "Catch rarity", StringComparison.OrdinalIgnoreCase))
+            ?.Region;
+
+        var detectedRarity = rarityRegion is null
+            ? null
+            : screenCaptureService.DetectTagRarity(capturePath, rarityRegion);
+
+        var parsedCatch = catchOcr.IsSplit
+            ? catchOcrParser.ParseFields(catchOcr.SpeciesText!, catchOcr.DetailsText!, detectedRarity)
+            : catchOcrParser.Parse(ocr.Text, detectedRarity);
+
+        if (!parsedCatch.HasCatchDetails)
+        {
+            if (DateTimeOffset.UtcNow - _lastRejectionLogAtUtc >= TimeSpan.FromSeconds(10))
+            {
+                logger.LogWarning(
+                    "Catch card was not accepted. OCR confidence: {Confidence:P0}; parsed species: {Species}; parsed weight: {WeightKg} kg; text: {Text}",
+                    ocr.Confidence,
+                    parsedCatch.Species ?? "(none)",
+                    parsedCatch.WeightKg?.ToString() ?? "(none)",
+                    ocr.Text.Length > 160 ? ocr.Text[..160] : ocr.Text);
+                _lastRejectionLogAtUtc = DateTimeOffset.UtcNow;
+            }
+
+            if (DateTimeOffset.UtcNow - _lastPendingReviewAtUtc >= TimeSpan.FromSeconds(10))
+            {
+                capturePath = await screenCaptureService.PersistCaptureAsync(temporaryCapturePath, cancellationToken);
+                await sessionService.SavePendingReviewAsync(
+                    capturePath, ocr, "Required catch fields were not parsed", cancellationToken);
+                _lastPendingReviewAtUtc = DateTimeOffset.UtcNow;
+                keepCapture = true;
+            }
+
             _candidateSignature = null;
             _candidateCount = 0;
             _lastProcessedSignature = null;
@@ -78,104 +151,42 @@ public sealed class AutomaticDetectionService(
             return;
         }
 
-        var temporaryCapturePath =
-            await screenCaptureService.CaptureVirtualScreenAsync(cancellationToken, persist: false);
-        var capturePath = temporaryCapturePath;
-        var keepCapture = false;
-        try
+        var signature = $"{parsedCatch.Species}|{parsedCatch.WeightKg}|{parsedCatch.LengthCm}|{parsedCatch.Rarity}";
+
+        if (!string.Equals(signature, _candidateSignature, StringComparison.Ordinal))
         {
-            var profiles = await roiProfiles.GetAllAsync(cancellationToken);
-            var hasRequiredProfiles =
-                profiles.Any(p => string.Equals(p.Name, "Catch species", StringComparison.OrdinalIgnoreCase)) &&
-                profiles.Any(p => string.Equals(p.Name, "Catch info", StringComparison.OrdinalIgnoreCase));
-            if (!hasRequiredProfiles)
-            {
-                if (DateTimeOffset.UtcNow - _lastMissingProfileLogAtUtc >= TimeSpan.FromSeconds(30))
-                {
-                    logger.LogError(
-                        "Automatic catch detection is paused because 'Catch species', 'Catch weight', and 'Catch length' profiles are required.");
-                    _lastMissingProfileLogAtUtc = DateTimeOffset.UtcNow;
-                }
-
-                return;
-            }
-
-            var catchOcr = ReadCatchFromScreen(capturePath, profiles);
-            var ocr = catchOcr.Result;
-            var rarityRegion = profiles
-                .FirstOrDefault(p => string.Equals(p.Name, "Catch rarity", StringComparison.OrdinalIgnoreCase))
-                ?.Region;
-            var detectedRarity = rarityRegion is null
-                ? null
-                : screenCaptureService.DetectTagRarity(capturePath, rarityRegion);
-            var parsedCatch = catchOcr.IsSplit
-                ? catchOcrParser.ParseFields(catchOcr.SpeciesText!, catchOcr.DetailsText!, detectedRarity)
-                : catchOcrParser.Parse(catchOcr.Result.Text, detectedRarity);
-            if (!parsedCatch.HasCatchDetails)
-            {
-                if (DateTimeOffset.UtcNow - _lastRejectionLogAtUtc >= TimeSpan.FromSeconds(10))
-                {
-                    logger.LogWarning(
-                        "Catch card was not accepted. OCR confidence: {Confidence:P0}; parsed species: {Species}; parsed weight: {WeightKg} kg; text: {Text}",
-                        ocr.Confidence,
-                        parsedCatch.Species ?? "(none)",
-                        parsedCatch.WeightKg?.ToString() ?? "(none)",
-                        ocr.Text.Length > 160 ? ocr.Text[..160] : ocr.Text);
-                    _lastRejectionLogAtUtc = DateTimeOffset.UtcNow;
-                }
-
-                if (DateTimeOffset.UtcNow - _lastPendingReviewAtUtc >= TimeSpan.FromSeconds(10))
-                {
-                    capturePath =
-                        await screenCaptureService.PersistCaptureAsync(temporaryCapturePath, cancellationToken);
-                    await sessionService.SavePendingReviewAsync(
-                        capturePath,
-                        ocr,
-                        "Required catch fields were not parsed",
-                        cancellationToken);
-                    _lastPendingReviewAtUtc = DateTimeOffset.UtcNow;
-                    keepCapture = true;
-                }
-
-                _candidateSignature = null;
-                _candidateCount = 0;
-                _lastProcessedSignature = null;
-                _lastProcessedAtUtc = null;
-                return;
-            }
-
-            var signature = $"{parsedCatch.Species}|{parsedCatch.WeightKg}|{parsedCatch.LengthCm}|{parsedCatch.Rarity}";
-            if (!string.Equals(signature, _candidateSignature, StringComparison.Ordinal))
-            {
-                _candidateSignature = signature;
-                _candidateCount = 1;
-                return;
-            }
-
-            _candidateCount++;
-            var sameSignatureRecentlyProcessed =
-                string.Equals(signature, _lastProcessedSignature, StringComparison.Ordinal) &&
-                _lastProcessedAtUtc is { } lastProcessedAt &&
-                DateTimeOffset.UtcNow - lastProcessedAt < sameSignatureCooldown;
-            if (_candidateCount < requiredDetections || sameSignatureRecentlyProcessed)
-                return;
-
-            capturePath = await screenCaptureService.PersistCaptureAsync(temporaryCapturePath, cancellationToken);
-            if (await sessionService.ProcessDetectedCatchAsync(capturePath, catchOcr, cancellationToken))
-            {
-                _lastProcessedSignature = signature;
-                _lastProcessedAtUtc = DateTimeOffset.UtcNow;
-                keepCapture = true;
-            }
+            _candidateSignature = signature;
+            _candidateCount = 1;
+            return;
         }
-        finally
+
+        _candidateCount++;
+
+        var sameSignatureRecentlyProcessed =
+            string.Equals(signature, _lastProcessedSignature, StringComparison.Ordinal) &&
+            _lastProcessedAtUtc is { } lastProcessedAt &&
+            DateTimeOffset.UtcNow - lastProcessedAt < sameSignatureCooldown;
+
+        if (_candidateCount < requiredDetections || sameSignatureRecentlyProcessed)
+            return;
+
+        capturePath = await screenCaptureService.PersistCaptureAsync(temporaryCapturePath, cancellationToken);
+
+        if (await sessionService.ProcessDetectedCatchAsync(capturePath, catchOcr, cancellationToken))
         {
-            if (!keepCapture)
-                screenCaptureService.DeleteCapture(capturePath);
+            _lastProcessedSignature = signature;
+            _lastProcessedAtUtc = DateTimeOffset.UtcNow;
+            keepCapture = true;
         }
     }
+    finally
+    {
+        if (!keepCapture)
+            screenCaptureService.DeleteCapture(capturePath);
+    }
+}
     
-    private CatchCardOcr ReadCatchFromScreen(string capturePath, IReadOnlyList<RoiProfile> profiles)
+    private CatchCardOcr? ReadCatchFromScreen(string capturePath, IReadOnlyList<RoiProfile> profiles)
     {
         var species = profiles.FirstOrDefault(p =>
                           string.Equals(p.Name, "Catch species", StringComparison.OrdinalIgnoreCase))
@@ -188,10 +199,9 @@ public sealed class AutomaticDetectionService(
         var bag = screenCaptureService.FindIcon(capturePath, info.Region, Path.Combine(templatesDir, "bag.png"));
         var ruler = screenCaptureService.FindIcon(capturePath, info.Region, Path.Combine(templatesDir, "ruler.png"));
 
+        // ← Key change: no throw
         if (bag is null || ruler is null)
-        {
-            throw new InvalidOperationException("Icon detection failed. Check that data/templates/bag.png and ruler.png exist and match the current game UI.");
-        }
+            return null;   // simply means "catch card not visible right now"
 
         const double weightOffsetX = 0.01;
         const double lengthOffsetX = 0.01;

@@ -1,4 +1,6 @@
 ﻿/.idea/
 catches.db
+catches.db-shm
+catches.db-wal
 /Data/catch-images/
 /Data/ocr-samples/
