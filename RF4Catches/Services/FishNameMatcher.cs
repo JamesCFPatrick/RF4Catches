@@ -82,7 +82,7 @@ public sealed class FishNameMatcher
         new("Grayling", ["grayling"]),
         new("Gudgeon", ["gudgeon"]),
         new("Humpback Whitefish", ["humpback whitefish"]),
-        new("Ide", ["ide"]),
+        new("Ide", ["ide", "Tre dg TP", "tre dg tp", "tre dg"]),
         new("Kamchatkan Rainbow Trout", ["kamchatkan rainbow trout"]),
         new("Kaluga", ["kaluga"]),
         new("Kessler's Herring", ["kessler's herring", "kesslers herring"]),

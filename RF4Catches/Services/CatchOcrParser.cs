@@ -8,7 +8,7 @@ public sealed record ParsedCatch(string? Species, decimal? WeightKg, decimal? Le
     public bool HasCatchDetails => Species is { Length: >= 3 } && WeightKg is not null;
 }
 
-public sealed partial class CatchOcrParser(FishNameMatcher fishNameMatcher)
+public sealed partial class CatchOcrParser(FishNameMatcher fishNameMatcher, ILogger<CatchOcrParser> logger)
 {
     [GeneratedRegex(@"(?<value>\d+(?:[.,]\d+)?)\s*(?<unit>kg|g)\b", RegexOptions.IgnoreCase)]
     private static partial Regex WeightPattern();
@@ -50,19 +50,52 @@ public sealed partial class CatchOcrParser(FishNameMatcher fishNameMatcher)
 
     private decimal? ParseWeightKg(string detailsText)
     {
+        const decimal maxReasonableKg = 80m;   // Adjust later if needed
+
         var match = WeightPattern().Match(detailsText);
         if (match.Success)
         {
             var value = ParseDecimal(match);
             if (value is null) return null;
-            if (string.Equals(match.Groups["unit"].Value, "g", StringComparison.OrdinalIgnoreCase))
-                return value / 1000m;
-            return value is { } weight ? CatchWeight.NormalizeKg(weight) : null;
+
+            var unit = match.Groups["unit"].Value;
+            decimal weightKg;
+
+            if (string.Equals(unit, "g", StringComparison.OrdinalIgnoreCase))
+            {
+                weightKg = value.Value / 1000m;
+            }
+            else
+            {
+                // Declared as kg
+                weightKg = CatchWeight.NormalizeKg(value.Value);
+            }
+
+            // Sanity check
+            if (weightKg > maxReasonableKg)
+            {
+                // Almost certainly the unit was missed and this is grams
+                logger.LogWarning(
+                    "Suspicious weight {WeightKg:F3} kg detected (>{Max} kg). Treating as grams. Raw OCR: {Text}",
+                    weightKg, maxReasonableKg, detailsText);
+
+                return weightKg / 1000m;
+            }
+
+            return weightKg;
         }
 
+        // Fallback pattern (e.g. "4319" misread)
         var fallback = WeightMisreadPattern().Match(detailsText);
         if (fallback.Success && ParseDecimal(fallback) is { } grams)
+        {
+            if (grams > 80_000) // > 80 kg in grams
+            {
+                logger.LogWarning("Extremely large fallback weight ignored: {Grams} g. Text: {Text}", grams, detailsText);
+                return null;
+            }
             return grams / 1000m;
+        }
 
         return null;
     }
