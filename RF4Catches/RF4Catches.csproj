@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <UseWindowsForms>true</UseWindowsForms>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />
+        <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
+        <PackageReference Include="SQLitePCLRawEx.bundle_e_sqlite3" Version="2.1.2-pre20220801070813" />
+        <PackageReference Include="Tesseract" Version="5.2.0" />
+        <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260222" />
+        <PackageReference Include="OpenCvSharp4.runtime.win.slim" Version="4.13.0.20260222" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="Data\captures\" />
+      <Folder Include="Data\ocr-samples\" />
+      <Folder Include="OcrTestImages\" />
+      <Folder Include="tessdata\" />
+    </ItemGroup>
+
+</Project>
