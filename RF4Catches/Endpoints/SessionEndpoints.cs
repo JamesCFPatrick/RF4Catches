@@ -13,14 +13,14 @@ public static class SessionEndpoints
             await sessionService.StartNewAsync(ct);
             response.Headers.Append("HX-Trigger", "sessionChanged");
             return Results.NoContent();
-        });
+        }).DisableAntiforgery();
 
         group.MapPost("/end", async (SessionService sessionService, HttpResponse response, CancellationToken ct) =>
         {
             await sessionService.EndAndProcessAsync(ct);
             response.Headers.Append("HX-Trigger", "sessionChanged");
             return Results.NoContent();
-        });
+        }).DisableAntiforgery();
 
         group.MapPost("/details", async Task<IResult> (
             [Microsoft.AspNetCore.Mvc.FromForm] SessionDetailsForm form,
@@ -29,7 +29,7 @@ public static class SessionEndpoints
         {
             await sessionService.UpdateDetailsAsync(form.ToDetails(), ct);
             return Results.NoContent();
-        });
+        }).DisableAntiforgery();
 
         // API versions
         app.MapGet("/api/session", (SessionService sessions) =>

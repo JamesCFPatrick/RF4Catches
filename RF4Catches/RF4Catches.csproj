@@ -20,7 +20,6 @@
 
     <ItemGroup>
       <Folder Include="Data\captures\" />
-      <Folder Include="Data\ocr-samples\" />
       <Folder Include="OcrTestImages\" />
       <Folder Include="tessdata\" />
     </ItemGroup>

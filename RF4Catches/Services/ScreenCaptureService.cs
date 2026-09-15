@@ -152,60 +152,64 @@ public sealed class ScreenCaptureService(IWebHostEnvironment environment)
         finalH / (double)source.Height);
 }
 
-    public string? DetectTagRarity(string capturePath, OcrRegion region)
+    /// <summary>
+/// Returns every rarity tag whose colour is present in the region, in
+/// stable display order: Valuable, Trophy, Rare Trophy, Rare.
+/// Empty when nothing clears the threshold.
+/// </summary>
+public IReadOnlyList<string> DetectTagRarities(string capturePath, OcrRegion region)
+{
+    if (!File.Exists(capturePath))
+        throw new FileNotFoundException("The capture no longer exists.", capturePath);
+
+    using var source = new Bitmap(capturePath);
+    var crop = Rectangle.FromLTRB(
+        (int)Math.Floor(source.Width * region.X),
+        (int)Math.Floor(source.Height * region.Y),
+        (int)Math.Ceiling(source.Width * (region.X + region.Width)),
+        (int)Math.Ceiling(source.Height * (region.Y + region.Height)));
+    crop.Intersect(new Rectangle(0, 0, source.Width, source.Height));
+    if (crop.Width < 1 || crop.Height < 1)
+        return Array.Empty<string>();
+
+    var greenPixels = 0;
+    var bluePixels = 0;
+    var purplePixels = 0;
+    var yellowPixels = 0;
+    var sampledPixels = 0;
+
+    for (var y = crop.Top; y < crop.Bottom; y += 2)
     {
-        if (!File.Exists(capturePath))
-            throw new FileNotFoundException("The capture no longer exists.", capturePath);
-
-        using var source = new Bitmap(capturePath);
-        var crop = Rectangle.FromLTRB(
-            (int)Math.Floor(source.Width * region.X),
-            (int)Math.Floor(source.Height * region.Y),
-            (int)Math.Ceiling(source.Width * (region.X + region.Width)),
-            (int)Math.Ceiling(source.Height * (region.Y + region.Height)));
-        crop.Intersect(new Rectangle(0, 0, source.Width, source.Height));
-        if (crop.Width < 1 || crop.Height < 1)
-            return null;
-
-        var greenPixels = 0;
-        var bluePixels = 0;
-        var purplePixels = 0;
-        var yellowPixels = 0;
-        var sampledPixels = 0;
-        for (var y = crop.Top; y < crop.Bottom; y += 2)
+        for (var x = crop.Left; x < crop.Right; x += 2)
         {
-            for (var x = crop.Left; x < crop.Right; x += 2)
+            var pixel = source.GetPixel(x, y);
+            var max = Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) / 255d;
+            var min = Math.Min(pixel.R, Math.Min(pixel.G, pixel.B)) / 255d;
+            var saturation = max == 0 ? 0 : (max - min) / max;
+            var hue = GetHue(pixel.R / 255d, pixel.G / 255d, pixel.B / 255d, max, min);
+            if (max >= 0.35)
             {
-                var pixel = source.GetPixel(x, y);
-                var max = Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) / 255d;
-                var min = Math.Min(pixel.R, Math.Min(pixel.G, pixel.B)) / 255d;
-                var saturation = max == 0 ? 0 : (max - min) / max;
-                var hue = GetHue(pixel.R / 255d, pixel.G / 255d, pixel.B / 255d, max, min);
-                if (max >= 0.35)
-                {
-                    var isVivid = saturation >= 0.35;
-                    var isPastel = saturation >= 0.22;
-                    if (hue is >= 40 and < 55 && isVivid) yellowPixels++;
-                    else if (hue is >= 55 and <= 155 && isVivid) greenPixels++;
-                    else if (hue is >= 190 and < 245 && isVivid) bluePixels++;
-                    else if (hue is >= 245 and <= 330 && isPastel) purplePixels++;
-                }
-                sampledPixels++;
+                var isVivid = saturation >= 0.35;
+                var isPastel = saturation >= 0.22;
+                if (hue is >= 40 and < 55 && isVivid) yellowPixels++;
+                else if (hue is >= 55 and <= 155 && isVivid) greenPixels++;
+                else if (hue is >= 190 and < 245 && isVivid) bluePixels++;
+                else if (hue is >= 245 and <= 330 && isPastel) purplePixels++;
             }
+            sampledPixels++;
         }
-
-        var candidates = new[]
-        {
-            (Rarity: "Valuable",    Pixels: greenPixels),
-            (Rarity: "Trophy",      Pixels: yellowPixels),
-            (Rarity: "Rare Trophy", Pixels: bluePixels),
-            (Rarity: "Rare",        Pixels: purplePixels)
-        };
-        var candidate = candidates.OrderByDescending(item => item.Pixels).First();
-        return candidate.Pixels >= 100 && candidate.Pixels / (double)sampledPixels >= 0.02
-            ? candidate.Rarity
-            : null;
     }
+
+    var hits = new List<string>(4);
+    if (MeetsThreshold(greenPixels, sampledPixels)) hits.Add("Valuable");
+    if (MeetsThreshold(yellowPixels, sampledPixels)) hits.Add("Trophy");
+    if (MeetsThreshold(bluePixels, sampledPixels)) hits.Add("Rare Trophy");
+    if (MeetsThreshold(purplePixels, sampledPixels)) hits.Add("Rare");
+    return hits;
+
+    static bool MeetsThreshold(int pixels, int sampled) =>
+        pixels >= 100 && pixels / (double)sampled >= 0.02;
+}
     
     // FIND ICON - finds template icons
     public (double X, double Y)? FindIcon(string capturePath, OcrRegion searchRegion, string templatePath, double threshold = 0.75)
@@ -247,7 +251,23 @@ public sealed class ScreenCaptureService(IWebHostEnvironment environment)
                 : 60 * ((red - green) / delta + 4);
         return hue < 0 ? hue + 360 : hue;
     }
-
+    
+    /// <summary>
+    /// Best-effort delete of a temporary capture. Never throws;
+    /// the retention service will pick up leftovers if this fails.
+    /// </summary>
+    public void TryDeleteCapture(string capturePath)
+    {
+        if (string.IsNullOrWhiteSpace(capturePath)) return;
+        try
+        {
+            if (File.Exists(capturePath)) File.Delete(capturePath);
+        }
+        catch (IOException) { /* locked or in use — retention will clean later */ }
+        catch (UnauthorizedAccessException) { /* same */ }
+    }
+    
+    
     public void DeleteCapture(string path)
     {
         if (File.Exists(path)) File.Delete(path);

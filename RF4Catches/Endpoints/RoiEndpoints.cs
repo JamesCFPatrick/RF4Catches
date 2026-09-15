@@ -8,9 +8,6 @@ public static class RoiEndpoints
     {
         app.MapGet("/roi", () => Results.Redirect("/roi.html"));
 
-        app.MapGet("/roi/antiforgery-token", (Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery, HttpContext context) =>
-            Results.Ok(new { token = antiforgery.GetAndStoreTokens(context).RequestToken }));
-
         app.MapPost("/roi/upload", async Task<IResult> (IFormFile image, IWebHostEnvironment environment, CancellationToken ct) =>
         {
             var extension = Path.GetExtension(image.FileName);
@@ -45,14 +42,14 @@ public static class RoiEndpoints
             try
             {
                 var result = ocr.ReadRegion(path, form.ToRegion());
-                var detectedRarity = screenCapture.DetectTagRarity(path, form.ToRegion());
-                return Results.Content(RoiEditorMarkup.Result(result, catchOcrParser.Parse(result.Text, detectedRarity)), "text/html");
+                var detectedRarities = screenCapture.DetectTagRarities(path, form.ToRegion()).ToDisplayString();
+                return Results.Content(RoiEditorMarkup.Result(result, catchOcrParser.Parse(result.Text, detectedRarities)), "text/html");
             }
             catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
             {
                 return Results.Content(RoiEditorMarkup.Error(ex.Message), "text/html");
             }
-        });
+        }).DisableAntiforgery();
 
         app.MapPost("/roi/save", async Task<IResult> ([Microsoft.AspNetCore.Mvc.FromForm] RoiForm form, RoiProfileStore profiles, CancellationToken ct) =>
         {
@@ -65,7 +62,7 @@ public static class RoiEndpoints
             {
                 return Results.Content(RoiEditorMarkup.Error(ex.Message), "text/html");
             }
-        });
+        }).DisableAntiforgery();
 
         app.MapPost("/roi/delete", async Task<IResult> (
             [Microsoft.AspNetCore.Mvc.FromForm] RoiDeleteForm form,
@@ -74,7 +71,7 @@ public static class RoiEndpoints
         {
             await profiles.DeleteAsync(form.Name, ct);
             return Results.Content(RoiEditorMarkup.Profiles(await profiles.GetAllAsync(ct)), "text/html");
-        });
+        }).DisableAntiforgery();
 
         app.MapGet("/roi/profiles", async (RoiProfileStore profiles, CancellationToken ct) =>
             Results.Content(RoiEditorMarkup.Profiles(await profiles.GetAllAsync(ct)), "text/html"));

@@ -114,55 +114,76 @@ public sealed class OcrService(Microsoft.Extensions.Options.IOptions<OcrOptions>
         return _engine;
     }
 
-    public OcrResult ReadRegion(
-        string imagePath,
-        OcrRegion region,
-        string? whitelist = null,
-        Tesseract.PageSegMode pageSegMode = Tesseract.PageSegMode.Auto)
+    public sealed record OcrCandidate(string Text, float Confidence, bool IsOriginal);
+
+public IReadOnlyList<OcrCandidate> ReadRegionCandidates(
+    string imagePath,
+    OcrRegion region,
+    string? whitelist = null,
+    Tesseract.PageSegMode pageSegMode = Tesseract.PageSegMode.Auto)
+{
+    if (region.X < 0 || region.Y < 0 || region.Width <= 0 || region.Height <= 0 ||
+        region.X + region.Width > 1 || region.Y + region.Height > 1)
+        throw new ArgumentOutOfRangeException(nameof(region), "The crop must stay inside the image.");
+
+    using var source = new Bitmap(imagePath);
+    var crop = Rectangle.FromLTRB(
+        (int)Math.Floor(source.Width * region.X),
+        (int)Math.Floor(source.Height * region.Y),
+        (int)Math.Ceiling(source.Width * (region.X + region.Width)),
+        (int)Math.Ceiling(source.Height * (region.Y + region.Height)));
+
+    crop.Intersect(new Rectangle(0, 0, source.Width, source.Height));
+    if (crop.Width < 1 || crop.Height < 1)
+        throw new InvalidOperationException("The selected crop is empty.");
+
+    var temporaryPath = Path.Combine(Path.GetTempPath(), $"rf4catches-{Guid.NewGuid():N}.png");
+    var processedPaths = new List<string>();
+    try
     {
-        if (region.X < 0 || region.Y < 0 || region.Width <= 0 || region.Height <= 0 ||
-            region.X + region.Width > 1 || region.Y + region.Height > 1)
-            throw new ArgumentOutOfRangeException(nameof(region), "The crop must stay inside the image.");
+        using var cropped = source.Clone(crop, source.PixelFormat);
+        cropped.Save(temporaryPath, System.Drawing.Imaging.ImageFormat.Png);
 
-        using var source = new Bitmap(imagePath);
-        var crop = Rectangle.FromLTRB(
-            (int)Math.Floor(source.Width * region.X),
-            (int)Math.Floor(source.Height * region.Y),
-            (int)Math.Ceiling(source.Width * (region.X + region.Width)),
-            (int)Math.Ceiling(source.Height * (region.Y + region.Height)));
-
-        crop.Intersect(new Rectangle(0, 0, source.Width, source.Height));
-        if (crop.Width < 1 || crop.Height < 1)
-            throw new InvalidOperationException("The selected crop is empty.");
-
-        var temporaryPath = Path.Combine(Path.GetTempPath(), $"rf4catches-{Guid.NewGuid():N}.png");
-        var processedPaths = new List<string>();
-        try
+        var original = Read(temporaryPath, whitelist, pageSegMode);
+        var candidates = new List<OcrCandidate>
         {
-            using var cropped = source.Clone(crop, source.PixelFormat);
-            cropped.Save(temporaryPath, System.Drawing.Imaging.ImageFormat.Png);
-            var originalResult = Read(temporaryPath, whitelist, pageSegMode);
-            if (originalResult.Confidence >= 0.75f)
-                return originalResult;
+            new(original.Text, original.Confidence, IsOriginal: true)
+        };
 
-            processedPaths.AddRange(CreatePreprocessedVariants(temporaryPath));
-            var bestResult = originalResult;
-            foreach (var processedPath in processedPaths)
-            {
-                var result = Read(processedPath, whitelist, pageSegMode);
-                if (result.Confidence > bestResult.Confidence)
-                    bestResult = result;
-            }
+        if (original.Confidence >= 0.85f)
+            return candidates;
 
-            return bestResult;
-        }
-        finally
+        processedPaths.AddRange(CreatePreprocessedVariants(temporaryPath));
+        foreach (var processedPath in processedPaths)
         {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
-            foreach (var processedPath in processedPaths)
-                if (File.Exists(processedPath)) File.Delete(processedPath);
+            var result = Read(processedPath, whitelist, pageSegMode);
+            if (string.IsNullOrWhiteSpace(result.Text)) continue;
+            candidates.Add(new OcrCandidate(result.Text, result.Confidence, IsOriginal: false));
         }
+
+        return candidates
+            .OrderByDescending(c => c.Confidence)
+            .ToList();
     }
+    finally
+    {
+        if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        foreach (var processedPath in processedPaths)
+            if (File.Exists(processedPath)) File.Delete(processedPath);
+    }
+}
+
+// Keep the old API for existing callers that don't care about validation
+public OcrResult ReadRegion(
+    string imagePath,
+    OcrRegion region,
+    string? whitelist = null,
+    Tesseract.PageSegMode pageSegMode = Tesseract.PageSegMode.Auto)
+{
+    var candidates = ReadRegionCandidates(imagePath, region, whitelist, pageSegMode);
+    var best = candidates.Count == 0 ? new OcrCandidate("", 0f, IsOriginal: true) : candidates[0];
+    return new OcrResult(best.Text, best.Confidence);
+}
 
     private static IReadOnlyList<string> CreatePreprocessedVariants(string sourcePath)
     {

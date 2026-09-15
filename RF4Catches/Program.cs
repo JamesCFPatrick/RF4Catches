@@ -7,7 +7,6 @@ using RF4Catches.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 // Services
-builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddDbContextFactory<AppDbContext>(opt =>
     opt.UseSqlite("Data Source=catches.db"));
 builder.Services.Configure<OcrOptions>(builder.Configuration.GetSection("Ocr"));
@@ -32,7 +31,7 @@ var app = builder.Build();
 // Middleware
 app.UseDefaultFiles();
 app.UseStaticFiles();
-app.UseAntiforgery();
+// app.UseAntiforgery(); Will keep in case auth is req in the future.
 
 // Database startup / migrations / cleanup
 await using (var db = await app.Services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())

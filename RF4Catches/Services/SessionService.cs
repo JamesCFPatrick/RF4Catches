@@ -1,18 +1,22 @@
-﻿namespace RF4Catches.Services;
+﻿using Microsoft.EntityFrameworkCore;
+using RF4Catches.Models;
+
+namespace RF4Catches.Services;
 
 public sealed class SessionService(
-    Microsoft.EntityFrameworkCore.IDbContextFactory<Data.AppDbContext> dbContextFactory,
+    IDbContextFactory<Data.AppDbContext> dbContextFactory,
     ScreenCaptureService screenCaptureService,
     OcrService ocrService,
     RoiProfileStore roiProfiles,
     CatchOcrParser catchOcrParser,
+    FishNameMatcher fishNameMatcher,
     IWebHostEnvironment environment,
     ILogger<SessionService> logger)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private int? _activeSessionId;
     public int? ActiveSessionId => _activeSessionId;
-    
+
     public sealed record CaptureTestResult(CatchCardOcr Ocr, ParsedCatch Parsed);
 
     public async Task<CaptureTestResult> TestCaptureAsync(CancellationToken cancellationToken = default)
@@ -32,7 +36,7 @@ public sealed class SessionService(
 
             var detectedRarity = rarityRegion is null
                 ? null
-                : screenCaptureService.DetectTagRarity(capturePath, rarityRegion);
+                : screenCaptureService.DetectTagRarities(capturePath, rarityRegion).ToDisplayString();
 
             var parsed = catchOcr.IsSplit
                 ? catchOcrParser.ParseFields(catchOcr.SpeciesText!, catchOcr.DetailsText!, detectedRarity)
@@ -42,10 +46,10 @@ public sealed class SessionService(
         }
         finally
         {
-            screenCaptureService.DeleteCapture(capturePath);
+            screenCaptureService.TryDeleteCapture(capturePath);
         }
     }
-    
+
     public async Task SavePendingReviewAsync(
         string capturePath,
         OcrResult ocr,
@@ -53,7 +57,7 @@ public sealed class SessionService(
         CancellationToken cancellationToken = default)
     {
         await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        db.PendingReviews.Add(new Models.PendingReview
+        db.PendingReviews.Add(new PendingReview
         {
             RawOcrText = ocr.Text,
             OcrConfidence = ocr.Confidence,
@@ -72,7 +76,7 @@ public sealed class SessionService(
                 throw new InvalidOperationException("There is no active fishing session.");
 
             await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            var session = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(
+            var session = await EntityFrameworkQueryableExtensions.SingleAsync(
                 db.FishingSessions, item => item.Id == sessionId, cancellationToken);
             session.FishingMethod = details.FishingMethod;
             session.Baits = details.Baits;
@@ -87,14 +91,14 @@ public sealed class SessionService(
         finally { _gate.Release(); }
     }
 
-    public async Task<Models.FishingSession> StartAsync(CancellationToken cancellationToken = default)
+    public async Task<FishingSession> StartAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
             if (_activeSessionId is not null) throw new InvalidOperationException("A fishing session is already active.");
             await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            var session = new Models.FishingSession();
+            var session = new FishingSession();
             db.FishingSessions.Add(session);
             await db.SaveChangesAsync(cancellationToken);
             _activeSessionId = session.Id;
@@ -104,7 +108,7 @@ public sealed class SessionService(
         finally { _gate.Release(); }
     }
 
-    public async Task<Models.FishingSession> StartNewAsync(CancellationToken cancellationToken = default)
+    public async Task<FishingSession> StartNewAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
         try
@@ -112,12 +116,12 @@ public sealed class SessionService(
             await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
             if (_activeSessionId is { } previousSessionId)
             {
-                var previousSession = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(
+                var previousSession = await EntityFrameworkQueryableExtensions.SingleAsync(
                     db.FishingSessions, s => s.Id == previousSessionId, cancellationToken);
                 previousSession.EndedAtUtc = DateTimeOffset.UtcNow;
             }
 
-            var session = new Models.FishingSession();
+            var session = new FishingSession();
             db.FishingSessions.Add(session);
             await db.SaveChangesAsync(cancellationToken);
             _activeSessionId = session.Id;
@@ -126,90 +130,100 @@ public sealed class SessionService(
         }
         finally { _gate.Release(); }
     }
-    
-    public async Task<Models.FishingSession> EndAndProcessAsync(CancellationToken cancellationToken = default)
-{
-    await _gate.WaitAsync(cancellationToken);
-    try
+
+    public async Task<FishingSession> EndAndProcessAsync(CancellationToken cancellationToken = default)
     {
-        if (_activeSessionId is not { } sessionId)
-            throw new InvalidOperationException("There is no active fishing session.");
-
-        var capturePath = await screenCaptureService.CaptureVirtualScreenAsync(cancellationToken);
-        var profiles = await roiProfiles.GetAllAsync(cancellationToken);
-
-        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var session = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(
-            db.FishingSessions, s => s.Id == sessionId, cancellationToken);
-
-        session.EndedAtUtc = DateTimeOffset.UtcNow;
-        session.CapturePath = capturePath;
-
-        var catchOcr = ReadCatchFromScreen(capturePath, profiles);
-
-        if (catchOcr is null)
+        await _gate.WaitAsync(cancellationToken);
+        try
         {
-            // No catch card visible – just end the session cleanly
-            await db.SaveChangesAsync(cancellationToken);
-            _activeSessionId = null;
-            logger.LogInformation("Fishing session {SessionId} ended (no catch card detected).", sessionId);
-            return session;
-        }
+            if (_activeSessionId is not { } sessionId)
+                throw new InvalidOperationException("There is no active fishing session.");
 
-        // Now we know catchOcr is not null → safe to use
-        var ocr = catchOcr.Result;
-        session.RawOcrText = ocr.Text;
-        session.OcrConfidence = ocr.Confidence;
+            var capturePath = await screenCaptureService.CaptureVirtualScreenAsync(
+                cancellationToken, persist: false);
 
-        // Declare detectedRarity here
-        var rarityRegion = profiles
-            .FirstOrDefault(p => string.Equals(p.Name, "Catch rarity", StringComparison.OrdinalIgnoreCase))
-            ?.Region;
-
-        var detectedRarity = rarityRegion is null
-            ? null
-            : screenCaptureService.DetectTagRarity(capturePath, rarityRegion);
-
-        var parsedCatch = catchOcr.IsSplit
-            ? catchOcrParser.ParseFields(catchOcr.SpeciesText!, catchOcr.DetailsText!, detectedRarity)
-            : catchOcrParser.Parse(ocr.Text, detectedRarity);
-
-        if (parsedCatch.HasCatchDetails)
-        {
-            var fishImageProfile = profiles
-                .FirstOrDefault(item => string.Equals(item.Name, "Fish image", StringComparison.OrdinalIgnoreCase));
-
-            db.Catches.Add(new Models.Catch
+            try
             {
-                FishingSessionId = session.Id,
-                Species = parsedCatch.Species!,
-                WeightKg = parsedCatch.WeightKg,
-                LengthCm = parsedCatch.LengthCm,
-                Rarity = parsedCatch.Rarity,
-                ImagePath = fishImageProfile is null
+                var profiles = await roiProfiles.GetAllAsync(cancellationToken);
+
+                await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+                var session = await EntityFrameworkQueryableExtensions.SingleAsync(
+                    db.FishingSessions, s => s.Id == sessionId, cancellationToken);
+
+                session.EndedAtUtc = DateTimeOffset.UtcNow;
+
+                var catchOcr = ReadCatchFromScreen(capturePath, profiles);
+
+                if (catchOcr is null)
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                    _activeSessionId = null;
+                    logger.LogInformation("Fishing session {SessionId} ended (no catch card detected).", sessionId);
+                    return session;
+                }
+
+                var ocr = catchOcr.Result;
+                session.RawOcrText = ocr.Text;
+                session.OcrConfidence = ocr.Confidence;
+
+                var rarityRegion = profiles
+                    .FirstOrDefault(p => string.Equals(p.Name, "Catch rarity", StringComparison.OrdinalIgnoreCase))
+                    ?.Region;
+
+                var detectedRarity = rarityRegion is null
                     ? null
-                    : await screenCaptureService.PersistCatchImageAsync(capturePath, fishImageProfile.Region, cancellationToken),
-                RawOcrText = ocr.Text
-            });
+                    : screenCaptureService.DetectTagRarities(capturePath, rarityRegion).ToDisplayString();
+
+                var parsedCatch = catchOcr.IsSplit
+                    ? catchOcrParser.ParseFields(catchOcr.SpeciesText!, catchOcr.DetailsText!, detectedRarity)
+                    : catchOcrParser.Parse(ocr.Text, detectedRarity);
+
+                if (parsedCatch.HasCatchDetails)
+                {
+                    var fishImageProfile = profiles
+                        .FirstOrDefault(item => string.Equals(item.Name, "Fish image", StringComparison.OrdinalIgnoreCase));
+
+                    db.Catches.Add(new Catch
+                    {
+                        FishingSessionId = session.Id,
+                        Species = parsedCatch.Species!,
+                        WeightKg = parsedCatch.WeightKg,
+                        LengthCm = parsedCatch.LengthCm,
+                        Rarity = parsedCatch.Rarity,
+                        ImagePath = fishImageProfile is null
+                            ? null
+                            : await screenCaptureService.PersistCatchImageAsync(
+                                capturePath, fishImageProfile.Region, cancellationToken),
+                        RawOcrText = ocr.Text
+                    });
+                }
+                else
+                {
+                    session.CapturePath = await screenCaptureService.PersistCaptureAsync(
+                        capturePath, cancellationToken);
+                    await SavePendingReviewAsync(
+                        session.CapturePath, ocr, "Session end: parse produced no catch details", cancellationToken);
+                }
+
+                await db.SaveChangesAsync(cancellationToken);
+                _activeSessionId = null;
+                logger.LogInformation(
+                    "Fishing session {SessionId} ended with OCR confidence {Confidence:P0}.",
+                    sessionId, ocr.Confidence);
+                return session;
+            }
+            finally
+            {
+                screenCaptureService.TryDeleteCapture(capturePath);
+            }
         }
-
-        await db.SaveChangesAsync(cancellationToken);
-        _activeSessionId = null;
-        logger.LogInformation("Fishing session {SessionId} ended with OCR confidence {Confidence:P0}.", sessionId, ocr.Confidence);
-        return session;
+        finally
+        {
+            _gate.Release();
+        }
     }
-    finally
-    {
-        _gate.Release();
-    }
-}
 
-    /// <summary>
-    /// Captures the current screen without requiring the user to start a session first.
-    /// If a session is active, this keeps the original start/end workflow; otherwise a
-    /// completed one-off record is created solely to persist the OCR result.
-    /// </summary>
-    public async Task<Models.FishingSession> CaptureAndProcessAsync(CancellationToken cancellationToken = default)
+    public async Task<FishingSession> CaptureAndProcessAsync(CancellationToken cancellationToken = default)
     {
         if (ActiveSessionId is null)
             await StartAsync(cancellationToken);
@@ -230,9 +244,8 @@ public sealed class SessionService(
         var bag = screenCaptureService.FindIcon(capturePath, info.Region, Path.Combine(templatesDir, "bag.png"));
         var ruler = screenCaptureService.FindIcon(capturePath, info.Region, Path.Combine(templatesDir, "ruler.png"));
 
-        // ← Key change: no throw
         if (bag is null || ruler is null)
-            return null;   // simply means "catch card not visible right now"
+            return null;
 
         const double weightOffsetX = 0.01;
         const double lengthOffsetX = 0.01;
@@ -243,9 +256,76 @@ public sealed class SessionService(
         var weightRegion = new OcrRegion(bag.Value.X + weightOffsetX, bag.Value.Y - regionOffsetY, regionW, regionH);
         var lengthRegion = new OcrRegion(ruler.Value.X + lengthOffsetX, ruler.Value.Y - regionOffsetY, regionW, regionH);
 
-        return ocrService.ReadRefinedCatch(capturePath, species.Region, weightRegion, lengthRegion);
+        var speciesCandidates = ocrService.ReadRegionCandidates(
+            capturePath, species.Region,
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz '-.",
+            Tesseract.PageSegMode.SingleLine);
+        var weightCandidates = ocrService.ReadRegionCandidates(
+            capturePath, weightRegion,
+            "0123456789.,kg ",
+            Tesseract.PageSegMode.SingleLine);
+        var lengthCandidates = ocrService.ReadRegionCandidates(
+            capturePath, lengthRegion,
+            "0123456789.,cm ",
+            Tesseract.PageSegMode.SingleLine);
+
+        var speciesPick = PickBestSpecies(speciesCandidates);
+        var weightPick = PickBestWithUnit(weightCandidates, "kg", "g");
+        var lengthPick = PickBestWithUnit(lengthCandidates, "cm");
+
+        var speciesText = speciesPick?.Text ?? "";
+        var weightText = weightPick?.Text ?? "";
+        var lengthText = lengthPick?.Text ?? "";
+
+        var confidence = Math.Min(
+            speciesPick?.Confidence ?? 0f,
+            Math.Min(weightPick?.Confidence ?? 0f, lengthPick?.Confidence ?? 0f));
+
+        var detailsText = $"{weightText} {lengthText}".Trim();
+        return new CatchCardOcr(
+            new OcrResult($"{speciesText}\n{detailsText}".Trim(), confidence),
+            speciesText,
+            weightText,
+            lengthText);
     }
-    
+
+    private OcrService.OcrCandidate? PickBestSpecies(IReadOnlyList<OcrService.OcrCandidate> candidates)
+    {
+        if (candidates.Count == 0) return null;
+
+        // Prefer a candidate that resolves to a real catalog fish after normalization.
+        foreach (var candidate in candidates)
+        {
+            var cleaned = TextCleanup.CleanFishName(candidate.Text);
+            if (cleaned.Length < 3) continue;
+            var normalized = fishNameMatcher.Normalize(cleaned);
+            if (!string.Equals(normalized, cleaned, StringComparison.Ordinal))
+                return candidate;
+        }
+
+        // Nothing matched — fall back to highest confidence.
+        return candidates[0];
+    }
+
+    private static OcrService.OcrCandidate? PickBestWithUnit(
+        IReadOnlyList<OcrService.OcrCandidate> candidates,
+        params string[] units)
+    {
+        if (candidates.Count == 0) return null;
+
+        // 1. Prefer any candidate that contains a unit token (kg, g, cm).
+        var withUnit = candidates.FirstOrDefault(c =>
+            units.Any(u => c.Text.Contains(u, StringComparison.OrdinalIgnoreCase)));
+        if (withUnit is not null) return withUnit;
+
+        // 2. Otherwise prefer the original if it contains a digit.
+        var original = candidates.FirstOrDefault(c => c.IsOriginal && c.Text.Any(char.IsDigit));
+        if (original is not null) return original;
+
+        // 3. Fall back to any digit-containing candidate.
+        return candidates.FirstOrDefault(c => c.Text.Any(char.IsDigit)) ?? candidates[0];
+    }
+
     public async Task<bool> ProcessDetectedCatchAsync(
         string capturePath,
         CatchCardOcr catchOcr,
@@ -256,7 +336,7 @@ public sealed class SessionService(
             .FirstOrDefault(item => string.Equals(item.Name, "Catch rarity", StringComparison.OrdinalIgnoreCase));
         var detectedRarity = rarityProfile is null
             ? null
-            : screenCaptureService.DetectTagRarity(capturePath, rarityProfile.Region);
+            : screenCaptureService.DetectTagRarities(capturePath, rarityProfile.Region).ToDisplayString();
         var parsedCatch = catchOcr.IsSplit
             ? catchOcrParser.ParseFields(catchOcr.SpeciesText!, catchOcr.DetailsText!, detectedRarity)
             : catchOcrParser.Parse(catchOcr.Result.Text, detectedRarity);
@@ -267,25 +347,24 @@ public sealed class SessionService(
         try
         {
             await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            Models.FishingSession session;
+            FishingSession session;
             if (_activeSessionId is { } sessionId)
             {
-                session = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(
-                    db.FishingSessions, item => item.Id == sessionId, cancellationToken);
+                session = await db.FishingSessions.SingleAsync(item => item.Id == sessionId, cancellationToken);
             }
             else
             {
-                session = new Models.FishingSession();
+                session = new FishingSession();
                 db.FishingSessions.Add(session);
             }
 
-            var fishImageProfile = (await roiProfiles.GetAllAsync(cancellationToken))
+            var fishImageProfile = profiles
                 .FirstOrDefault(item => string.Equals(item.Name, "Fish image", StringComparison.OrdinalIgnoreCase));
             var imagePath = fishImageProfile is null
                 ? null
                 : await screenCaptureService.PersistCatchImageAsync(capturePath, fishImageProfile.Region, cancellationToken);
 
-            session.Catches.Add(new Models.Catch
+            session.Catches.Add(new Catch
             {
                 Species = parsedCatch.Species!,
                 WeightKg = parsedCatch.WeightKg,
@@ -295,7 +374,6 @@ public sealed class SessionService(
                 RawOcrText = ocr.Text,
                 FishingSession = session
             });
-            session.CapturePath = capturePath;
             session.RawOcrText = ocr.Text;
             session.OcrConfidence = ocr.Confidence;
             await db.SaveChangesAsync(cancellationToken);

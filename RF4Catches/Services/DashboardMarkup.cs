@@ -184,24 +184,24 @@ public static class DashboardMarkup
             ? $"{lengthCm.ToString("0.#", CultureInfo.InvariantCulture)} cm"
             : "—";
 
-        var rarity = RenderRarity(catchRecord.Rarity);
-        var rarityCardClass = RarityCardClass(catchRecord.Rarity);
+        var rarity = RarityMarkup.RenderBadges(catchRecord.Rarity);
+        var rarityCardClass = RarityMarkup.CardClass(catchRecord.Rarity);
         var caughtAt = catchRecord.CaughtAtUtc.ToLocalTime().ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture);
         var image = RenderImage(catchRecord.ImagePath, catchRecord.Species);
 
         return $"""
-                 <article class="catch-card {rarityCardClass} card border border-base-300 bg-base-200 shadow-sm" data-balatro-card>
-                   {image}
-                   <div class="card-body gap-1 p-4">
-                     <div class="flex items-start justify-between gap-2">
-                       <h3 class="font-semibold">{species}</h3>
-                       {rarity}
-                     </div>
-                     <div class="text-sm text-base-content/70">{weight} · {length}</div>
-                     <div class="text-xs text-base-content/50">{caughtAt} · session #{catchRecord.SessionId}</div>
-                   </div>
-                 </article>
-                 """;
+                <article class="catch-card {rarityCardClass} card border border-base-300 bg-base-200 shadow-sm" data-balatro-card>
+                  {image}
+                  <div class="card-body gap-1 p-4">
+                    <div class="flex items-start justify-between gap-2">
+                      <h3 class="min-w-0 break-words font-semibold">{species}</h3>
+                      <div class="flex shrink-0 flex-col items-end gap-1">{rarity}</div>
+                    </div>
+                    <div class="text-sm text-base-content/70">{weight} · {length}</div>
+                    <div class="text-xs text-base-content/50">{caughtAt} · session #{catchRecord.SessionId}</div>
+                  </div>
+                </article>
+                """;
     }
 
     private static string RenderImage(string? imagePath, string species)
@@ -213,28 +213,4 @@ public static class DashboardMarkup
         var safeAlt = WebUtility.HtmlEncode(TextCleanup.CleanFishName(species));
         return $"""<div class="flex h-40 w-full items-center justify-center bg-base-300"><img class="max-h-full max-w-full object-contain" src="/api/catch-image/{safePath}" alt="{safeAlt}"></div>""";
     }
-
-    private static string RenderRarity(string? rarity)
-    {
-        if (string.IsNullOrWhiteSpace(rarity)) return "—";
-        var encoded = WebUtility.HtmlEncode(rarity);
-        var style = rarity.Equals("Valuable", StringComparison.OrdinalIgnoreCase)
-            ? "badge-success"
-            : rarity.Equals("Rare Trophy", StringComparison.OrdinalIgnoreCase)
-                ? "badge-info"
-                : rarity.Equals("Trophy", StringComparison.OrdinalIgnoreCase)
-                    ? "badge-warning"
-                    : rarity.Equals("Rare", StringComparison.OrdinalIgnoreCase)
-                        ? "badge-secondary"
-                        : "badge-ghost";
-        return $"""<span class="badge {style}">{encoded}</span>""";
-    }
-
-    private static string RarityCardClass(string? rarity) =>
-        rarity is not null &&
-        (rarity.Equals("Rare", StringComparison.OrdinalIgnoreCase) ||
-         rarity.Equals("Trophy", StringComparison.OrdinalIgnoreCase) ||
-         rarity.Equals("Rare Trophy", StringComparison.OrdinalIgnoreCase))
-            ? "prism-card"
-            : "";
 }
