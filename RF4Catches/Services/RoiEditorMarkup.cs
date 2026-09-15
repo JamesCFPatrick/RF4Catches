@@ -9,7 +9,7 @@ public static class RoiEditorMarkup
   public static string Editor(string fileName)
   {
     var safeFileName = WebUtility.HtmlEncode(fileName);
-    return $$"""
+    return $"""
              <section class="space-y-5" data-roi-editor>
                <div class="flex flex-wrap items-center gap-2">
                  <span class="text-sm font-semibold">Zoom</span>
@@ -21,12 +21,12 @@ public static class RoiEditorMarkup
                </div>
                <div class="image-viewport rounded-box border border-base-300 bg-base-200 p-2 shadow-inner" id="image-viewport">
                  <div class="image-stage" id="image-stage">
-                   <img id="sample-image" src="/roi/image/{{safeFileName}}" alt="Uploaded RF4 screenshot">
+                   <img id="sample-image" src="/roi/image/{safeFileName}" alt="Uploaded RF4 screenshot">
                    <div class="selection" id="selection" hidden></div>
                  </div>
                </div>
                <form id="roi-form" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                 <input type="hidden" name="Image" value="{{safeFileName}}">
+                 <input type="hidden" name="Image" value="{safeFileName}">
                  <label class="form-control"><span class="label-text">Profile name</span><input class="input input-bordered input-sm" name="Name" id="roi-name" value="Catch species" maxlength="80"></label>
                  <label class="form-control"><span class="label-text">X</span><input class="input input-bordered input-sm" name="X" id="roi-x" type="number" step="any" min="0" max="1"></label>
                  <label class="form-control"><span class="label-text">Y</span><input class="input input-bordered input-sm" name="Y" id="roi-y" type="number" step="any" min="0" max="1"></label>
@@ -43,7 +43,7 @@ public static class RoiEditorMarkup
                  <button class="btn btn-outline" hx-post="/roi/save" hx-include="#roi-form" hx-target="#saved-profiles">Save profile</button>
                </div>
                <div id="ocr-result" class="rounded-box bg-base-200"></div>
-               {{EditorScript}}
+               {EditorScript}
              </section>
              """;
   }

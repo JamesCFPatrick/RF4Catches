@@ -26,9 +26,9 @@ public static class HistoryMarkup
             ? """<div class="rounded-box border border-base-300 bg-base-100 p-10 text-center text-base-content/60">No historical catches recorded yet.</div>"""
             : string.Join(Environment.NewLine, sessions.Select(RenderSession));
 
-        return $$"""
+        return $"""
         <div class="space-y-5">
-          {{content}}
+          {content}
         </div>
         """;
     }
@@ -45,29 +45,29 @@ public static class HistoryMarkup
             .Select(RenderCatch));
         var details = RenderDetails(session.Details);
 
-        return $$"""
+        return $"""
         <section class="card border border-base-300 bg-base-100 shadow-xl">
           <div class="card-body p-0">
             <div class="flex flex-col gap-3 border-b border-base-300 p-6 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div class="flex items-center gap-3">
-                  <h2 class="card-title">Session #{{session.Id}}</h2>
-                  {{(session.EndedAtUtc is null ? """<span class="badge badge-success">Active</span>""" : "")}}
+                  <h2 class="card-title">Session #{session.Id}</h2>
+                  {(session.EndedAtUtc is null ? """<span class="badge badge-success">Active</span>""" : "")}
                 </div>
                 <p class="mt-1 text-sm text-base-content/60">
-                  {{session.StartedAtUtc.ToLocalTime().ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture)}} –
-                  {{ended}}
+                  {session.StartedAtUtc.ToLocalTime().ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture)} –
+                  {ended}
                 </p>
               </div>
               <div class="flex gap-2">
-                <span class="badge badge-primary">{{session.Catches.Count}} catches</span>
-                <span class="badge badge-ghost">{{totalWeight.ToString("N2", CultureInfo.InvariantCulture)}} kg</span>
+                <span class="badge badge-primary">{session.Catches.Count} catches</span>
+                <span class="badge badge-ghost">{totalWeight.ToString("N2", CultureInfo.InvariantCulture)} kg</span>
               </div>
             </div>
             <div class="grid gap-3 p-6 sm:grid-cols-2 xl:grid-cols-3">
-              {{catches}}
+              {catches}
             </div>
-            {{details}}
+            {details}
           </div>
         </section>
         """;
@@ -96,7 +96,9 @@ public static class HistoryMarkup
     {
         var species = WebUtility.HtmlEncode(TextCleanup.CleanFishName(catchRecord.Species));
         var weight = catchRecord.WeightKg is { } weightKg
-            ? $"{CatchWeight.NormalizeKg(weightKg).ToString("N2", CultureInfo.InvariantCulture)} kg"
+            ? weightKg < 1m
+                ? $"{(weightKg * 1000m).ToString("0.#", CultureInfo.InvariantCulture)} g"
+                : $"{weightKg.ToString("0.###", CultureInfo.InvariantCulture)} kg"
             : "—";
         var length = catchRecord.LengthCm is { } lengthCm
             ? $"{lengthCm.ToString("N1", CultureInfo.InvariantCulture)} cm"
@@ -105,16 +107,16 @@ public static class HistoryMarkup
         var rarityCardClass = RarityCardClass(catchRecord.Rarity);
         var caughtAt = catchRecord.CaughtAtUtc.ToLocalTime().ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture);
         var image = RenderImage(catchRecord.ImagePath, catchRecord.Species);
-        return $$"""
-          <article class="catch-card {{rarityCardClass}} card border border-base-300 bg-base-200 shadow-sm" data-balatro-card>
-            {{image}}
+        return $"""
+          <article class="catch-card {rarityCardClass} card border border-base-300 bg-base-200 shadow-sm" data-balatro-card>
+            {image}
             <div class="card-body gap-1 p-4">
               <div class="flex items-start justify-between gap-2">
-                <h3 class="font-semibold">{{species}}</h3>
-                {{rarity}}
+                <h3 class="font-semibold">{species}</h3>
+                {rarity}
               </div>
-              <div class="text-sm text-base-content/70">{{weight}} · {{length}}</div>
-              <div class="text-xs text-base-content/50">{{caughtAt}}</div>
+              <div class="text-sm text-base-content/70">{weight} · {length}</div>
+              <div class="text-xs text-base-content/50">{caughtAt}</div>
             </div>
           </article>
           """;

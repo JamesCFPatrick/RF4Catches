@@ -29,12 +29,12 @@ public static class DashboardMarkup
             ? """<div class="py-10 text-center text-base-content/60 sm:col-span-2 xl:col-span-3">No catches recorded yet.</div>"""
             : string.Join(Environment.NewLine, data.RecentCatches.Select(RenderCard));
 
-        return $$"""
+        return $"""
                  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                   {{StatCard("Total catches", data.TotalCatches.ToString("N0", CultureInfo.InvariantCulture), "All recorded catches")}}
-                   {{StatCard("Total weight", $"{data.TotalWeightKg.ToString("N2", CultureInfo.InvariantCulture)} kg", "Combined catch weight")}}
-                   {{StatCard("Average weight", $"{data.AverageWeightKg.ToString("N2", CultureInfo.InvariantCulture)} kg", "Average per catch")}}
-                   {{StatCard("Caught today", data.CatchesToday.ToString("N0", CultureInfo.InvariantCulture), "Since midnight UTC")}}
+                   {StatCard("Total catches", data.TotalCatches.ToString("N0", CultureInfo.InvariantCulture), "All recorded catches")}
+                   {StatCard("Total weight", $"{data.TotalWeightKg.ToString("N2", CultureInfo.InvariantCulture)} kg", "Combined catch weight")}
+                   {StatCard("Average weight", $"{data.AverageWeightKg.ToString("N2", CultureInfo.InvariantCulture)} kg", "Average per catch")}
+                   {StatCard("Caught today", data.CatchesToday.ToString("N0", CultureInfo.InvariantCulture), "Since midnight UTC")}
                  </div>
 
                  <section class="card mt-6 border border-base-300 bg-base-100 shadow-xl">
@@ -47,7 +47,7 @@ public static class DashboardMarkup
                        <span class="badge badge-success gap-2"><span class="h-2 w-2 rounded-full bg-success-content"></span>Live</span>
                      </div>
                      <div class="mt-4 grid gap-3 px-6 pb-6 sm:grid-cols-2 xl:grid-cols-3">
-                       {{recentCards}}
+                       {recentCards}
                      </div>
                    </div>
                  </section>
@@ -97,12 +97,12 @@ public static class DashboardMarkup
     
     public static string RenderSession(DashboardData data)
     {
-        return $$"""
+        return $"""
                  <section class="mb-6 flex flex-col gap-4 rounded-box border border-base-300 bg-base-100 p-5 shadow-xl sm:flex-row sm:items-center sm:justify-between">
                    <div>
                      <div class="flex items-center gap-3">
                        <h2 class="text-lg font-semibold">Fishing session</h2>
-                       {{SessionBadge(data.ActiveSessionId)}}
+                       {SessionBadge(data.ActiveSessionId)}
                      </div>
                      <p class="mt-1 text-sm text-base-content/60">Catches are grouped into the active session.</p>
                    </div>
@@ -116,14 +116,14 @@ public static class DashboardMarkup
                      <button class="btn btn-primary"
                              hx-post="/dashboard/session/new"
                              hx-swap="none">
-                       {{(data.ActiveSessionId is null ? "Start session" : "Start new session")}}
+                       {(data.ActiveSessionId is null ? "Start session" : "Start new session")}
                      </button>
-                     {{(data.ActiveSessionId is not null
+                     {(data.ActiveSessionId is not null
                          ? """<button class="btn btn-error" hx-post="/dashboard/session/end" hx-swap="none">End session</button>"""
-                         : "")}}
+                         : "")}
                    </div>
                  </section>
-                 {{SessionDetailsForm(data.ActiveSessionId, data.ActiveSessionDetails)}}
+                 {SessionDetailsForm(data.ActiveSessionId, data.ActiveSessionDetails)}
                  """;
     }
     
@@ -131,7 +131,7 @@ public static class DashboardMarkup
     {
         if (sessionId is null) return "";
         details ??= new SessionDetails(null, null, null, null, null, null, null, null);
-        return $$"""
+        return $"""
                  <form id="session-details-form"
                        class="mb-6 rounded-box border border-base-300 bg-base-100 p-5 shadow-xl"
                        hx-post="/dashboard/session/details" hx-swap="none">
@@ -140,14 +140,14 @@ public static class DashboardMarkup
                      <p class="text-sm text-base-content/60">Record the setup and earnings for this fishing session.</p>
                    </div>
                    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                     {{Input("Fishing method", "FishingMethod", details.FishingMethod, "e.g. float, feeder, spinning")}}
-                     {{Input("Bait / lures", "Baits", details.Baits, "Separate multiple items with commas")}}
-                     {{Input("Line clip", "LineClip", details.LineClip, "e.g. 18 m")}}
-                     {{Input("Hook depth (cm)", "HookDepthCm", details.HookDepthCm?.ToString(CultureInfo.InvariantCulture), "e.g. 120")}}
-                     {{Input("Map", "MapName", details.MapName, "Fishing location")}}
-                     {{Input("Map coordinates", "MapCoordinates", details.MapCoordinates, "e.g. 42:18")}}
-                     {{Input("Café silver", "CafeSilver", details.CafeSilver?.ToString(CultureInfo.InvariantCulture), "Optional sale amount")}}
-                     {{Input("Market silver", "MarketSilver", details.MarketSilver?.ToString(CultureInfo.InvariantCulture), "Optional sale amount")}}
+                     {Input("Fishing method", "FishingMethod", details.FishingMethod, "e.g. float, feeder, spinning")}
+                     {Input("Bait / lures", "Baits", details.Baits, "Separate multiple items with commas")}
+                     {Input("Line clip", "LineClip", details.LineClip, "e.g. 18 m")}
+                     {Input("Hook depth (cm)", "HookDepthCm", details.HookDepthCm?.ToString(CultureInfo.InvariantCulture), "e.g. 120")}
+                     {Input("Map", "MapName", details.MapName, "Fishing location")}
+                     {Input("Map coordinates", "MapCoordinates", details.MapCoordinates, "e.g. 42:18")}
+                     {Input("Café silver", "CafeSilver", details.CafeSilver?.ToString(CultureInfo.InvariantCulture), "Optional sale amount")}
+                     {Input("Market silver", "MarketSilver", details.MarketSilver?.ToString(CultureInfo.InvariantCulture), "Optional sale amount")}
                    </div>
                    <button class="btn btn-secondary mt-4" type="submit">Save session details</button>
                  </form>
@@ -162,40 +162,46 @@ public static class DashboardMarkup
             ? $"""<span class="badge badge-success">Active · #{id}</span>"""
             : """<span class="badge badge-ghost">No active session</span>""";
 
-    private static string StatCard(string title, string value, string description) => $$"""
+    private static string StatCard(string title, string value, string description) => $"""
           <div class="stat rounded-box border border-base-300 bg-base-100 shadow-xl">
-            <div class="stat-title">{{title}}</div>
-            <div class="stat-value text-primary">{{value}}</div>
-            <div class="stat-desc">{{description}}</div>
+            <div class="stat-title">{title}</div>
+            <div class="stat-value text-primary">{value}</div>
+            <div class="stat-desc">{description}</div>
           </div>
           """;
     
     private static string RenderCard(DashboardCatch catchRecord)
     {
         var species = WebUtility.HtmlEncode(TextCleanup.CleanFishName(catchRecord.Species));
+
         var weight = catchRecord.WeightKg is { } weightKg
-            ? $"{CatchWeight.NormalizeKg(weightKg).ToString("N2", CultureInfo.InvariantCulture)} kg"
+            ? weightKg < 1m
+                ? $"{(weightKg * 1000m).ToString("0.#", CultureInfo.InvariantCulture)} g"
+                : $"{weightKg.ToString("0.###", CultureInfo.InvariantCulture)} kg"
             : "—";
+
         var length = catchRecord.LengthCm is { } lengthCm
-            ? $"{lengthCm.ToString("N1", CultureInfo.InvariantCulture)} cm"
+            ? $"{lengthCm.ToString("0.#", CultureInfo.InvariantCulture)} cm"
             : "—";
+
         var rarity = RenderRarity(catchRecord.Rarity);
         var rarityCardClass = RarityCardClass(catchRecord.Rarity);
         var caughtAt = catchRecord.CaughtAtUtc.ToLocalTime().ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture);
         var image = RenderImage(catchRecord.ImagePath, catchRecord.Species);
-        return $$"""
-          <article class="catch-card {{rarityCardClass}} card border border-base-300 bg-base-200 shadow-sm" data-balatro-card>
-            {{image}}
-            <div class="card-body gap-1 p-4">
-              <div class="flex items-start justify-between gap-2">
-                <h3 class="font-semibold">{{species}}</h3>
-                {{rarity}}
-              </div>
-              <div class="text-sm text-base-content/70">{{weight}} · {{length}}</div>
-              <div class="text-xs text-base-content/50">{{caughtAt}} · session #{{catchRecord.SessionId}}</div>
-            </div>
-          </article>
-          """;
+
+        return $"""
+                 <article class="catch-card {rarityCardClass} card border border-base-300 bg-base-200 shadow-sm" data-balatro-card>
+                   {image}
+                   <div class="card-body gap-1 p-4">
+                     <div class="flex items-start justify-between gap-2">
+                       <h3 class="font-semibold">{species}</h3>
+                       {rarity}
+                     </div>
+                     <div class="text-sm text-base-content/70">{weight} · {length}</div>
+                     <div class="text-xs text-base-content/50">{caughtAt} · session #{catchRecord.SessionId}</div>
+                   </div>
+                 </article>
+                 """;
     }
 
     private static string RenderImage(string? imagePath, string species)
