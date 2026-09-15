@@ -1,18 +1,26 @@
-﻿namespace RF4Catches.Data;
+﻿using Microsoft.EntityFrameworkCore;
+using RF4Catches.Models;
 
-public class AppDbContext(Microsoft.EntityFrameworkCore.DbContextOptions<AppDbContext> options) : Microsoft.EntityFrameworkCore.DbContext(options)
+namespace RF4Catches.Data;
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
-    public Microsoft.EntityFrameworkCore.DbSet<Models.Catch> Catches => Set<Models.Catch>();
-    public Microsoft.EntityFrameworkCore.DbSet<Models.FishingSession> FishingSessions => Set<Models.FishingSession>();
-    public Microsoft.EntityFrameworkCore.DbSet<Models.PendingReview> PendingReviews => Set<Models.PendingReview>();
+    public DbSet<Catch> Catches => Set<Catch>();
+    public DbSet<FishingSession> FishingSessions => Set<FishingSession>();
+    public DbSet<PendingReview> PendingReviews => Set<PendingReview>();
 
-    protected override void OnModelCreating(Microsoft.EntityFrameworkCore.ModelBuilder modelBuilder)
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Models.Catch>().Property(c => c.SaleValue).HasPrecision(18, 2);
-        modelBuilder.Entity<Models.Catch>().Property(c => c.LengthCm).HasPrecision(18, 2);
-        modelBuilder.Entity<Models.FishingSession>().Property(s => s.MarketTotal).HasPrecision(18, 2);
-        modelBuilder.Entity<Models.FishingSession>().Property(s => s.HookDepthCm).HasPrecision(18, 2);
-        modelBuilder.Entity<Models.FishingSession>().Property(s => s.CafeSilver).HasPrecision(18, 2);
-        modelBuilder.Entity<Models.FishingSession>().Property(s => s.MarketSilver).HasPrecision(18, 2);
+        modelBuilder.Entity<Catch>().Property(c => c.SaleValue).HasPrecision(18, 2);
+        modelBuilder.Entity<Catch>().Property(c => c.LengthCm).HasPrecision(18, 2);
+        modelBuilder.Entity<Catch>().Property(c => c.WeightKg).HasPrecision(18, 4);
+        modelBuilder.Entity<FishingSession>().Property(s => s.MarketTotal).HasPrecision(18, 2);
+        modelBuilder.Entity<FishingSession>().Property(s => s.HookDepthCm).HasPrecision(18, 2);
+        modelBuilder.Entity<FishingSession>().Property(s => s.CafeSilver).HasPrecision(18, 2);
+        modelBuilder.Entity<FishingSession>().Property(s => s.MarketSilver).HasPrecision(18, 2);
+
+        // Soft delete: every query against Catch transparently excludes
+        // rows flagged IsDeleted. Use .IgnoreQueryFilters() to see them.
+        modelBuilder.Entity<Catch>().HasQueryFilter(c => !c.IsDeleted);
     }
 }

@@ -33,5 +33,23 @@
       </div>
     </div>
   </main>
+  <!-- Shared confirmation modal + toast stack. These live in the page shell
+       (not in HTMX-swapped content) so listeners survive content refreshes. -->
+  <dialog id="confirm-modal" class="modal">
+    <div class="modal-box">
+      <h3 class="text-lg font-bold">Confirm</h3>
+      <p id="confirm-modal-message" class="py-4"></p>
+      <div class="modal-action">
+        <button type="button" id="confirm-modal-cancel" class="btn btn-ghost">Cancel</button>
+        <button type="button" id="confirm-modal-confirm" class="btn btn-error">Delete</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button aria-label="Close">close</button>
+    </form>
+  </dialog>
+
+  <div id="toast-container" class="toast toast-end toast-bottom z-50"></div>
 </body>
 </html>
+

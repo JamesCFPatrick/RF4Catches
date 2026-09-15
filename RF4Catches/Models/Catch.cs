@@ -13,4 +13,6 @@ public class Catch
     public decimal? SaleValue { get; set; }
     public DateTimeOffset CaughtAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public string? RawOcrText { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAtUtc { get; set; }
 }

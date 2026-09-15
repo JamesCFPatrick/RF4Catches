@@ -107,6 +107,49 @@ public static class CaptureEndpoints
             var path = Path.Combine(environment.ContentRootPath, "data", "catch-images", fileName);
             return File.Exists(path) ? Results.File(path, "image/jpeg") : Results.NotFound();
         });
+        
+        app.MapDelete("/api/catch/{id:int}", async Task<IResult> (
+            int id,
+            HttpContext context,
+            IDbContextFactory<Data.AppDbContext> dbContextFactory,
+            SessionService sessionService,
+            CancellationToken ct) =>
+        {
+            if (!await sessionService.DeleteCatchAsync(id, ct))
+            {
+                context.Response.Headers.Append("HX-Trigger",
+                    """{"showToast":{"message":"Catch could not be found","type":"error"}}""");
+                return Results.NotFound();
+            }
+
+            context.Response.Headers.Append("HX-Trigger",
+                """{"showToast":{"message":"Catch deleted","type":"success"}}""");
+
+            // The dashboard renders summary stats above the catch grid; those go
+            // stale when a catch disappears. Emit an out-of-band swap so they
+            // refresh in place. History has no such target, so skip it there.
+            var currentUrl = context.Request.Headers["HX-Current-URL"].ToString();
+            var isDashboard = currentUrl.EndsWith("/", StringComparison.Ordinal)
+                              || currentUrl.Contains("/dashboard", StringComparison.Ordinal)
+                              || currentUrl.Contains("index.html", StringComparison.OrdinalIgnoreCase);
+
+            if (!isDashboard)
+                return Results.Ok();
+
+            var data = await DashboardEndpoints.BuildDashboardDataAsync(dbContextFactory, sessionService, ct);
+            var oob = DashboardMarkup.RenderStats(data).Replace(
+                "<div id=\"dashboard-stats\"",
+                "<div id=\"dashboard-stats\" hx-swap-oob=\"true\"",
+                StringComparison.Ordinal);
+
+            return Results.Content(oob, "text/html");
+        });
+
+        app.MapPost("/api/catch/{id:int}/restore", async (int id, SessionService sessionService, CancellationToken ct) =>
+        {
+            var ok = await sessionService.RestoreCatchAsync(id, ct);
+            return ok ? Results.Ok() : Results.NotFound();
+        });
     }
 }
 

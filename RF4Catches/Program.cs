@@ -81,7 +81,9 @@ static async Task EnsureCatchSchemaAsync(AppDbContext db)
     [
         ("LengthCm", "REAL NULL"),
         ("Rarity", "TEXT NULL"),
-        ("ImagePath", "TEXT NULL")
+        ("ImagePath", "TEXT NULL"),
+        ("IsDeleted", "INTEGER NOT NULL DEFAULT 0"),
+        ("DeletedAtUtc", "TEXT NULL")
     ]);
 
     await EnsureColumnsAsync(connection, "FishingSessions",

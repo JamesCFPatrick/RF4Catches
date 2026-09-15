@@ -17,6 +17,9 @@ public sealed class SessionService(
     private int? _activeSessionId;
     public int? ActiveSessionId => _activeSessionId;
 
+    private SessionDetails? _cachedActiveDetails;
+    private int? _cachedDetailsSessionId;
+
     public sealed record CaptureTestResult(CatchCardOcr Ocr, ParsedCatch Parsed);
 
     public async Task<CaptureTestResult> TestCaptureAsync(CancellationToken cancellationToken = default)
@@ -76,8 +79,7 @@ public sealed class SessionService(
                 throw new InvalidOperationException("There is no active fishing session.");
 
             await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            var session = await EntityFrameworkQueryableExtensions.SingleAsync(
-                db.FishingSessions, item => item.Id == sessionId, cancellationToken);
+            var session = await db.FishingSessions.SingleAsync(item => item.Id == sessionId, cancellationToken);
             session.FishingMethod = details.FishingMethod;
             session.Baits = details.Baits;
             session.LineClip = details.LineClip;
@@ -87,6 +89,83 @@ public sealed class SessionService(
             session.CafeSilver = details.CafeSilver;
             session.MarketSilver = details.MarketSilver;
             await db.SaveChangesAsync(cancellationToken);
+
+            // Details changed — invalidate cache so the dashboard sees the new values.
+            _cachedActiveDetails = null;
+            _cachedDetailsSessionId = null;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<SessionDetails?> GetActiveDetailsAsync(
+        IDbContextFactory<Data.AppDbContext> dbContextFactory,
+        CancellationToken cancellationToken = default)
+    {
+        if (_activeSessionId is not { } sessionId)
+        {
+            _cachedActiveDetails = null;
+            _cachedDetailsSessionId = null;
+            return null;
+        }
+
+        if (_cachedDetailsSessionId == sessionId && _cachedActiveDetails is not null)
+            return _cachedActiveDetails;
+
+        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var details = await db.FishingSessions
+            .Where(s => s.Id == sessionId)
+            .Select(s => new SessionDetails(
+                s.FishingMethod, s.Baits, s.LineClip, s.HookDepthCm,
+                s.MapName, s.MapCoordinates, s.CafeSilver, s.MarketSilver))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        _cachedActiveDetails = details;
+        _cachedDetailsSessionId = sessionId;
+        return details;
+    }
+
+    public async Task<bool> DeleteCatchAsync(int catchId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+            var catchRecord = await db.Catches
+                .IgnoreQueryFilters()
+                .SingleOrDefaultAsync(c => c.Id == catchId, cancellationToken);
+
+            if (catchRecord is null || catchRecord.IsDeleted)
+                return false;
+
+            catchRecord.IsDeleted = true;
+            catchRecord.DeletedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+
+            logger.LogInformation("Catch {CatchId} ({Species}) soft-deleted.", catchId, catchRecord.Species);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<bool> RestoreCatchAsync(int catchId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+            var catchRecord = await db.Catches
+                .IgnoreQueryFilters()
+                .SingleOrDefaultAsync(c => c.Id == catchId, cancellationToken);
+
+            if (catchRecord is null || !catchRecord.IsDeleted)
+                return false;
+
+            catchRecord.IsDeleted = false;
+            catchRecord.DeletedAtUtc = null;
+            await db.SaveChangesAsync(cancellationToken);
+
+            logger.LogInformation("Catch {CatchId} ({Species}) restored.", catchId, catchRecord.Species);
+            return true;
         }
         finally { _gate.Release(); }
     }
@@ -102,6 +181,11 @@ public sealed class SessionService(
             db.FishingSessions.Add(session);
             await db.SaveChangesAsync(cancellationToken);
             _activeSessionId = session.Id;
+
+            // New session — invalidate cache.
+            _cachedActiveDetails = null;
+            _cachedDetailsSessionId = null;
+
             logger.LogInformation("Fishing session {SessionId} started.", session.Id);
             return session;
         }
@@ -116,8 +200,7 @@ public sealed class SessionService(
             await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
             if (_activeSessionId is { } previousSessionId)
             {
-                var previousSession = await EntityFrameworkQueryableExtensions.SingleAsync(
-                    db.FishingSessions, s => s.Id == previousSessionId, cancellationToken);
+                var previousSession = await db.FishingSessions.SingleAsync(s => s.Id == previousSessionId, cancellationToken);
                 previousSession.EndedAtUtc = DateTimeOffset.UtcNow;
             }
 
@@ -125,6 +208,11 @@ public sealed class SessionService(
             db.FishingSessions.Add(session);
             await db.SaveChangesAsync(cancellationToken);
             _activeSessionId = session.Id;
+
+            // New session — invalidate cache.
+            _cachedActiveDetails = null;
+            _cachedDetailsSessionId = null;
+
             logger.LogInformation("New fishing session {SessionId} started.", session.Id);
             return session;
         }
@@ -147,8 +235,7 @@ public sealed class SessionService(
                 var profiles = await roiProfiles.GetAllAsync(cancellationToken);
 
                 await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-                var session = await EntityFrameworkQueryableExtensions.SingleAsync(
-                    db.FishingSessions, s => s.Id == sessionId, cancellationToken);
+                var session = await db.FishingSessions.SingleAsync(s => s.Id == sessionId, cancellationToken);
 
                 session.EndedAtUtc = DateTimeOffset.UtcNow;
 
@@ -158,6 +245,11 @@ public sealed class SessionService(
                 {
                     await db.SaveChangesAsync(cancellationToken);
                     _activeSessionId = null;
+
+                    // Session ended — invalidate cache.
+                    _cachedActiveDetails = null;
+                    _cachedDetailsSessionId = null;
+
                     logger.LogInformation("Fishing session {SessionId} ended (no catch card detected).", sessionId);
                     return session;
                 }
@@ -207,6 +299,11 @@ public sealed class SessionService(
 
                 await db.SaveChangesAsync(cancellationToken);
                 _activeSessionId = null;
+
+                // Session ended — invalidate cache.
+                _cachedActiveDetails = null;
+                _cachedDetailsSessionId = null;
+
                 logger.LogInformation(
                     "Fishing session {SessionId} ended with OCR confidence {Confidence:P0}.",
                     sessionId, ocr.Confidence);
@@ -293,7 +390,6 @@ public sealed class SessionService(
     {
         if (candidates.Count == 0) return null;
 
-        // Prefer a candidate that resolves to a real catalog fish after normalization.
         foreach (var candidate in candidates)
         {
             var cleaned = TextCleanup.CleanFishName(candidate.Text);
@@ -303,7 +399,6 @@ public sealed class SessionService(
                 return candidate;
         }
 
-        // Nothing matched — fall back to highest confidence.
         return candidates[0];
     }
 
@@ -313,16 +408,13 @@ public sealed class SessionService(
     {
         if (candidates.Count == 0) return null;
 
-        // 1. Prefer any candidate that contains a unit token (kg, g, cm).
         var withUnit = candidates.FirstOrDefault(c =>
             units.Any(u => c.Text.Contains(u, StringComparison.OrdinalIgnoreCase)));
         if (withUnit is not null) return withUnit;
 
-        // 2. Otherwise prefer the original if it contains a digit.
         var original = candidates.FirstOrDefault(c => c.IsOriginal && c.Text.Any(char.IsDigit));
         if (original is not null) return original;
 
-        // 3. Fall back to any digit-containing candidate.
         return candidates.FirstOrDefault(c => c.Text.Any(char.IsDigit)) ?? candidates[0];
     }
 
@@ -377,7 +469,15 @@ public sealed class SessionService(
             session.RawOcrText = ocr.Text;
             session.OcrConfidence = ocr.Confidence;
             await db.SaveChangesAsync(cancellationToken);
+
+            // If this call created a new session (no active one), invalidate cache.
+            if (_activeSessionId != session.Id)
+            {
+                _cachedActiveDetails = null;
+                _cachedDetailsSessionId = null;
+            }
             _activeSessionId = session.Id;
+
             logger.LogInformation("Automatically detected catch {Species} ({WeightKg} kg) in session {SessionId}.",
                 parsedCatch.Species, parsedCatch.WeightKg, session.Id);
             return true;

@@ -4,6 +4,7 @@ using System.Net;
 namespace RF4Catches.Services;
 
 public sealed record HistoryCatch(
+    int Id,
     string Species,
     decimal? WeightKg,
     decimal? LengthCm,
@@ -107,18 +108,24 @@ public static class HistoryMarkup
         var rarityCardClass = RarityMarkup.CardClass(catchRecord.Rarity);
         var caughtAt = catchRecord.CaughtAtUtc.ToLocalTime().ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture);
         var image = RenderImage(catchRecord.ImagePath, catchRecord.Species);
+
         return $"""
-                <article class="catch-card {rarityCardClass} card border border-base-300 bg-base-200 shadow-sm" data-balatro-card>
-                  {image}
-                  <div class="card-body gap-1 p-4">
-                    <div class="flex items-start justify-between gap-2">
-                      <h3 class="min-w-0 break-words font-semibold">{species}</h3>
-                      <div class="flex shrink-0 flex-col items-end gap-1">{rarity}</div>
-                    </div>
-                    <div class="text-sm text-base-content/70">{weight} · {length}</div>
-                    <div class="text-xs text-base-content/50">{caughtAt}</div>
+                <div class="catch-card-wrapper flex h-full flex-col gap-1" data-catch-wrapper>
+                  <div class="flex h-8 justify-end px-1">
+                    {CatchCardActions.DeleteButton(catchRecord.Id)}
                   </div>
-                </article>
+                  <article class="catch-card {rarityCardClass} card flex-1 border border-base-300 bg-base-200 shadow-sm" data-balatro-card>
+                    {image}
+                    <div class="card-body gap-1 p-4">
+                      <div class="flex items-start justify-between gap-2">
+                        <h3 class="line-clamp-2 min-h-[2.5rem] min-w-0 break-words font-semibold">{species}</h3>
+                        <div class="flex shrink-0 flex-col items-end gap-1">{rarity}</div>
+                      </div>
+                      <div class="text-sm text-base-content/70">{weight} · {length}</div>
+                      <div class="text-xs text-base-content/50">{caughtAt}</div>
+                    </div>
+                  </article>
+                </div>
                 """;
     }
 

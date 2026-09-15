@@ -4,6 +4,7 @@ using System.Net;
 namespace RF4Catches.Services;
 
 public sealed record DashboardCatch(
+    int Id,
     string Species,
     decimal? WeightKg,
     decimal? LengthCm,
@@ -30,30 +31,34 @@ public static class DashboardMarkup
             : string.Join(Environment.NewLine, data.RecentCatches.Select(RenderCard));
 
         return $"""
-                 <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                   {StatCard("Total catches", data.TotalCatches.ToString("N0", CultureInfo.InvariantCulture), "All recorded catches")}
-                   {StatCard("Total weight", $"{data.TotalWeightKg.ToString("N2", CultureInfo.InvariantCulture)} kg", "Combined catch weight")}
-                   {StatCard("Average weight", $"{data.AverageWeightKg.ToString("N2", CultureInfo.InvariantCulture)} kg", "Average per catch")}
-                   {StatCard("Caught today", data.CatchesToday.ToString("N0", CultureInfo.InvariantCulture), "Since midnight UTC")}
-                 </div>
+                {RenderStats(data)}
 
-                 <section class="card mt-6 border border-base-300 bg-base-100 shadow-xl">
-                   <div class="card-body p-0">
-                     <div class="flex items-center justify-between gap-4 px-6 pt-6">
-                       <div>
-                         <h2 class="card-title">Recent catches</h2>
-                         <p class="text-sm text-base-content/60">Catches from the active session appear here.</p>
-                       </div>
-                       <span class="badge badge-success gap-2"><span class="h-2 w-2 rounded-full bg-success-content"></span>Live</span>
-                     </div>
-                     <div class="mt-4 grid gap-3 px-6 pb-6 sm:grid-cols-2 xl:grid-cols-3">
-                       {recentCards}
-                     </div>
-                   </div>
-                 </section>
-                 """;
+                <section class="card mt-6 border border-base-300 bg-base-100 shadow-xl">
+                  <div class="card-body p-0">
+                    <div class="flex items-center justify-between gap-4 px-6 pt-6">
+                      <div>
+                        <h2 class="card-title">Recent catches</h2>
+                        <p class="text-sm text-base-content/60">Catches from the active session appear here.</p>
+                      </div>
+                      <span class="badge badge-success gap-2"><span class="h-2 w-2 rounded-full bg-success-content"></span>Live</span>
+                    </div>
+                    <div class="mt-4 grid gap-3 px-6 pb-6 sm:grid-cols-2 xl:grid-cols-3">
+                      {recentCards}
+                    </div>
+                  </div>
+                </section>
+                """;
     }
-    
+
+    public static string RenderStats(DashboardData data) => $"""
+                                                             <div id="dashboard-stats" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                                               {StatCard("Total catches", data.TotalCatches.ToString("N0", CultureInfo.InvariantCulture), "All recorded catches")}
+                                                               {StatCard("Total weight", $"{data.TotalWeightKg.ToString("N2", CultureInfo.InvariantCulture)} kg", "Combined catch weight")}
+                                                               {StatCard("Average weight", $"{data.AverageWeightKg.ToString("N2", CultureInfo.InvariantCulture)} kg", "Average per catch")}
+                                                               {StatCard("Caught today", data.CatchesToday.ToString("N0", CultureInfo.InvariantCulture), "Since midnight UTC")}
+                                                             </div>
+                                                             """;
+
     public static string RenderCaptureTest(SessionService.CaptureTestResult result)
 {
     var ocr = result.Ocr;
@@ -94,7 +99,7 @@ public static class DashboardMarkup
         </div>
         """;
 }
-    
+
     public static string RenderSession(DashboardData data)
     {
         return $"""
@@ -190,17 +195,22 @@ public static class DashboardMarkup
         var image = RenderImage(catchRecord.ImagePath, catchRecord.Species);
 
         return $"""
-                <article class="catch-card {rarityCardClass} card border border-base-300 bg-base-200 shadow-sm" data-balatro-card>
-                  {image}
-                  <div class="card-body gap-1 p-4">
-                    <div class="flex items-start justify-between gap-2">
-                      <h3 class="min-w-0 break-words font-semibold">{species}</h3>
-                      <div class="flex shrink-0 flex-col items-end gap-1">{rarity}</div>
-                    </div>
-                    <div class="text-sm text-base-content/70">{weight} · {length}</div>
-                    <div class="text-xs text-base-content/50">{caughtAt} · session #{catchRecord.SessionId}</div>
+                <div class="catch-card-wrapper flex h-full flex-col gap-1" data-catch-wrapper>
+                  <div class="flex h-8 justify-end px-1">
+                    {CatchCardActions.DeleteButton(catchRecord.Id)}
                   </div>
-                </article>
+                  <article class="catch-card {rarityCardClass} card flex-1 border border-base-300 bg-base-200 shadow-sm" data-balatro-card>
+                    {image}
+                    <div class="card-body gap-1 p-4">
+                      <div class="flex items-start justify-between gap-2">
+                        <h3 class="line-clamp-2 min-h-[2.5rem] min-w-0 break-words font-semibold">{species}</h3>
+                        <div class="flex shrink-0 flex-col items-end gap-1">{rarity}</div>
+                      </div>
+                      <div class="text-sm text-base-content/70">{weight} · {length}</div>
+                      <div class="text-xs text-base-content/50">{caughtAt} · session #{catchRecord.SessionId}</div>
+                    </div>
+                  </article>
+                </div>
                 """;
     }
 

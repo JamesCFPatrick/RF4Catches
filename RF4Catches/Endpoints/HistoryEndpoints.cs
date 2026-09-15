@@ -25,7 +25,7 @@ public static class HistoryEndpoints
                 .Select(c => new
                 {
                     c.FishingSessionId,
-                    Catch = new HistoryCatch(c.Species, c.WeightKg, c.LengthCm, c.Rarity, c.ImagePath, c.CaughtAtUtc)
+                    Catch = new HistoryCatch(c.Id, c.Species, c.WeightKg, c.LengthCm, c.Rarity, c.ImagePath, c.CaughtAtUtc)
                 })
                 .ToListAsync(ct);
 

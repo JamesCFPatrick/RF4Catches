@@ -12,35 +12,60 @@
   <script src="/site.js"></script>
 </head>
 <body data-theme="night" class="app-shell min-h-screen bg-base-200 text-base-content" style="font-family: 'Roboto Mono', monospace;">
-  <main class="mx-auto max-w-7xl px-4 py-10 lg:px-8">
-    <header class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div class="flex items-center gap-4">
-        <div class="rounded-box bg-primary p-3 font-bold text-primary-content">RF4</div>
-        <div>
-          <h1 class="text-3xl font-bold tracking-tight">RF4 Catches</h1>
-          <p class="mt-1 text-base-content/70">Automatic catch detection dashboard</p>
-        </div>
+<main class="mx-auto max-w-7xl px-4 py-10 lg:px-8">
+  <header class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex items-center gap-4">
+      <div class="rounded-box bg-primary p-3 font-bold text-primary-content">RF4</div>
+      <div>
+        <h1 class="text-3xl font-bold tracking-tight">RF4 Catches</h1>
+        <p class="mt-1 text-base-content/70">Automatic catch detection dashboard</p>
       </div>
-      <div class="flex flex-wrap gap-2">
-        <a class="btn btn-outline" href="/history">Catch history</a>
-        <a class="btn btn-outline" href="/roi">Configure detection region</a>
-      </div>
-    </header>
-
-    <div id="session-panel"
-         hx-get="/dashboard/session"
-         hx-trigger="load, sessionChanged from:body"
-         hx-swap="innerHTML">
     </div>
-
-    <div id="capture-test-result" class="mb-6"></div>
-    
-    <div id="dashboard-content"
-         hx-get="/dashboard/content"
-         hx-trigger="load, every 5s, sessionChanged from:body"
-         hx-swap="innerHTML"
-         hx-sync="this:replace">
+    <div class="flex flex-wrap gap-2">
+      <a class="btn btn-outline" href="/history">Catch history</a>
+      <a class="btn btn-outline" href="/roi">Configure detection region</a>
     </div>
-  </main>
+  </header>
+
+  <div id="session-panel"
+       hx-get="/dashboard/session"
+       hx-trigger="load, sessionChanged from:body"
+       hx-swap="innerHTML">
+  </div>
+
+  <div id="capture-test-result" class="mb-6"></div>
+
+  <div id="dashboard-content"
+       hx-get="/dashboard/content"
+       hx-trigger="load, sessionChanged from:body, refreshDashboard from:body"
+       hx-swap="innerHTML"
+       hx-sync="this:replace">
+  </div>
+
+  <div id="dashboard-version"
+       hx-get="/dashboard/version"
+       hx-trigger="load, every 5s"
+       hx-swap="none"
+       hidden>
+  </div>
+</main>
+
+<!-- Shared confirmation modal + toast stack. These live in the page shell
+       (not in HTMX-swapped content) so listeners survive content refreshes. -->
+<dialog id="confirm-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="text-lg font-bold">Confirm</h3>
+    <p id="confirm-modal-message" class="py-4"></p>
+    <div class="modal-action">
+      <button type="button" id="confirm-modal-cancel" class="btn btn-ghost">Cancel</button>
+      <button type="button" id="confirm-modal-confirm" class="btn btn-error">Delete</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button aria-label="Close">close</button>
+  </form>
+</dialog>
+
+<div id="toast-container" class="toast toast-end toast-bottom z-50"></div>
 </body>
 </html>
