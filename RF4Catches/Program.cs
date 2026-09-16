@@ -13,13 +13,15 @@ builder.Services.Configure<OcrOptions>(builder.Configuration.GetSection("Ocr"));
 builder.Services.Configure<HotkeyOptions>(builder.Configuration.GetSection("Hotkeys"));
 builder.Services.Configure<AutomaticDetectionOptions>(builder.Configuration.GetSection("AutomaticDetection"));
 
+builder.Services.AddHostedService<AutomaticDetectionService>();
+
 builder.Services.AddSingleton<ScreenCaptureService>();
 builder.Services.AddSingleton<OcrService>();
 builder.Services.AddSingleton<RoiProfileStore>();
 builder.Services.AddSingleton<FishNameMatcher>();
 builder.Services.AddSingleton<CatchOcrParser>();
 builder.Services.AddSingleton<SessionService>();
-builder.Services.AddHostedService<AutomaticDetectionService>();
+builder.Services.AddSingleton<HistoryDashboardService>();
 
 builder.Services.Configure<HostOptions>(options =>
 {
@@ -95,7 +97,9 @@ static async Task EnsureCatchSchemaAsync(AppDbContext db)
         ("MapName", "TEXT NULL"),
         ("MapCoordinates", "TEXT NULL"),
         ("CafeSilver", "REAL NULL"),
-        ("MarketSilver", "REAL NULL")
+        ("MarketSilver", "REAL NULL"),
+        ("IsDeleted", "INTEGER NOT NULL DEFAULT 0"),
+        ("DeletedAtUtc", "TEXT NULL")
     ]);
 
     await using var pendingTable = connection.CreateCommand();

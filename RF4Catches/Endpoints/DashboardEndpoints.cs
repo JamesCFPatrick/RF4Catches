@@ -26,7 +26,15 @@ public static class DashboardEndpoints
             var data = new DashboardData(0, 0m, 0m, 0, sessionService.ActiveSessionId, details, Array.Empty<DashboardCatch>());
             return Results.Content(DashboardMarkup.RenderSession(data), "text/html");
         });
-
+        
+        app.MapGet("/api/history/dashboard", async (
+            HistoryDashboardService service,
+            CancellationToken ct) =>
+        {
+            var data = await service.GetDashboardAsync(ct);
+            return Results.Ok(data);
+        });
+        
         app.MapGet("/dashboard", () => Results.Redirect("/"));
         
         app.MapGet("/dashboard/version", async (

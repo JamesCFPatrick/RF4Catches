@@ -17,5 +17,9 @@ public class FishingSession
     public string? MapCoordinates { get; set; }
     public decimal? CafeSilver { get; set; }
     public decimal? MarketSilver { get; set; }
+    
+    public bool IsDeleted { get; set; }
+    
+    public DateTimeOffset? DeletedAtUtc { get; set; }
     public List<Catch> Catches { get; set; } = [];
 }

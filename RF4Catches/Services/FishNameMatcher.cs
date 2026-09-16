@@ -42,6 +42,7 @@ public sealed class FishNameMatcher
         new("Brown Trout", ["brown trout"]),
         new("Buffalo", ["buffalo"]),
         new("Burbot", ["burbot"]),
+        new("Gizzard Shad", ["gizzard shad, Gizzaydishad"]),
         new("Caspian Brown Trout", ["caspian brown trout"]),
         new("Caspian Kutum", ["caspian kutum"]),
         new("Caspian Lamprey", ["caspian lamprey"]),

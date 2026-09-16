@@ -35,45 +35,61 @@ public static class HistoryMarkup
     }
 
     private static string RenderSession(HistorySession session)
-    {
-        var totalWeight = session.Catches.Sum(catchRecord =>
-            catchRecord.WeightKg is { } weightKg ? CatchWeight.NormalizeKg(weightKg) : 0m);
-        var ended = session.EndedAtUtc is { } endedAt
-            ? endedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture)
-            : "Active";
-        var catches = string.Join(Environment.NewLine, session.Catches
-            .OrderByDescending(catchRecord => catchRecord.CaughtAtUtc)
-            .Select(RenderCatch));
-        var details = RenderDetails(session.Details);
+{
+    var totalWeight = session.Catches.Sum(catchRecord =>
+        catchRecord.WeightKg is { } weightKg ? CatchWeight.NormalizeKg(weightKg) : 0m);
+    var ended = session.EndedAtUtc is { } endedAt
+        ? endedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture)
+        : "Active";
+    var catches = string.Join(Environment.NewLine, session.Catches
+        .OrderByDescending(catchRecord => catchRecord.CaughtAtUtc)
+        .Select(RenderCatch));
+    var details = RenderDetails(session.Details);
 
-        return $"""
-        <section class="card border border-base-300 bg-base-100 shadow-xl">
-          <div class="card-body p-0">
-            <div class="flex flex-col gap-3 border-b border-base-300 p-6 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div class="flex items-center gap-3">
-                  <h2 class="card-title">Session #{session.Id}</h2>
-                  {(session.EndedAtUtc is null ? """<span class="badge badge-success">Active</span>""" : "")}
-                </div>
-                <p class="mt-1 text-sm text-base-content/60">
-                  {session.StartedAtUtc.ToLocalTime().ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture)} –
-                  {ended}
-                </p>
-              </div>
-              <div class="flex gap-2">
-                <span class="badge badge-primary">{session.Catches.Count} catches</span>
-                <span class="badge badge-ghost">{totalWeight.ToString("N2", CultureInfo.InvariantCulture)} kg</span>
-              </div>
-            </div>
-            <div class="grid gap-3 p-6 sm:grid-cols-2 xl:grid-cols-3">
-              {catches}
-            </div>
-            {details}
-          </div>
-        </section>
+    var deleteButton = $"""
+        <button type="button"
+                class="btn btn-circle btn-ghost btn-sm text-base-content/40 hover:text-error"
+                hx-delete="/api/session/{session.Id}"
+                hx-target="closest section"
+                hx-swap="delete swap:150ms"
+                data-confirm="Delete session #{session.Id} and its {session.Catches.Count} catches? This cannot be undone."
+                title="Delete session"
+                aria-label="Delete session">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+               stroke-width="1.8" stroke="currentColor" class="h-4 w-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
         """;
-    }
 
+    return $"""
+    <section class="card border border-base-300 bg-base-100 shadow-xl">
+      <div class="card-body p-0">
+        <div class="flex flex-col gap-3 border-b border-base-300 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div class="flex items-center gap-3">
+              <h2 class="card-title">Session #{session.Id}</h2>
+              {(session.EndedAtUtc is null ? """<span class="badge badge-success">Active</span>""" : "")}
+            </div>
+            <p class="mt-1 text-sm text-base-content/60">
+              {session.StartedAtUtc.ToLocalTime().ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture)} –
+              {ended}
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="badge badge-primary">{session.Catches.Count} catches</span>
+            <span class="badge badge-ghost">{totalWeight.ToString("N2", CultureInfo.InvariantCulture)} kg</span>
+            {deleteButton}
+          </div>
+        </div>
+        <div class="grid gap-3 p-6 sm:grid-cols-2 xl:grid-cols-3">
+          {catches}
+        </div>
+        {details}
+      </div>
+    </section>
+    """;
+}
     private static string RenderDetails(SessionDetails details)
     {
         var values = new[]
@@ -128,6 +144,8 @@ public static class HistoryMarkup
                 </div>
                 """;
     }
+    
+    
 
     private static string RenderImage(string? imagePath, string species)
     {

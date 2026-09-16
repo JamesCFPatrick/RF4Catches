@@ -18,9 +18,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<FishingSession>().Property(s => s.HookDepthCm).HasPrecision(18, 2);
         modelBuilder.Entity<FishingSession>().Property(s => s.CafeSilver).HasPrecision(18, 2);
         modelBuilder.Entity<FishingSession>().Property(s => s.MarketSilver).HasPrecision(18, 2);
+        
 
-        // Soft delete: every query against Catch transparently excludes
+        // Soft delete: every query transparently excludes
         // rows flagged IsDeleted. Use .IgnoreQueryFilters() to see them.
         modelBuilder.Entity<Catch>().HasQueryFilter(c => !c.IsDeleted);
+        modelBuilder.Entity<FishingSession>().HasQueryFilter(s => !s.IsDeleted);
     }
 }

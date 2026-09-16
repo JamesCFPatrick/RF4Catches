@@ -146,7 +146,7 @@ public sealed class SessionService(
         }
         finally { _gate.Release(); }
     }
-
+    
     public async Task<bool> RestoreCatchAsync(int catchId, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -169,7 +169,57 @@ public sealed class SessionService(
         }
         finally { _gate.Release(); }
     }
+    
+    public async Task<bool> DeleteSessionAsync(int sessionId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_activeSessionId == sessionId)
+                throw new InvalidOperationException("Cannot delete the active session. End it first.");
 
+            await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+            var session = await db.FishingSessions
+                .IgnoreQueryFilters()
+                .SingleOrDefaultAsync(s => s.Id == sessionId, cancellationToken);
+
+            if (session is null || session.IsDeleted)
+                return false;
+
+            session.IsDeleted = true;
+            session.DeletedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+
+            logger.LogInformation("Session {SessionId} soft-deleted.", sessionId);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<bool> RestoreSessionAsync(int sessionId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+            var session = await db.FishingSessions
+                .IgnoreQueryFilters()
+                .SingleOrDefaultAsync(s => s.Id == sessionId, cancellationToken);
+
+            if (session is null || !session.IsDeleted)
+                return false;
+
+            session.IsDeleted = false;
+            session.DeletedAtUtc = null;
+            await db.SaveChangesAsync(cancellationToken);
+
+            logger.LogInformation("Session {SessionId} restored.", sessionId);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+    
+    
     public async Task<FishingSession> StartAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);

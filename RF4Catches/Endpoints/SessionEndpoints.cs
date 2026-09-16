@@ -40,6 +40,35 @@ public static class SessionEndpoints
 
         app.MapPost("/api/session/end", async (SessionService sessions, CancellationToken ct) =>
             Results.Ok(await sessions.EndAndProcessAsync(ct)));
+        
+        app.MapDelete("/api/session/{id:int}", async Task<IResult> (
+            int id,
+            HttpContext context,
+            SessionService sessionService,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                if (!await sessionService.DeleteSessionAsync(id, ct))
+                    return Results.NotFound();
+
+                context.Response.Headers.Append("HX-Trigger",
+                    """{"showToast":{"message":"Session deleted","type":"success"}}""");
+                return Results.Ok();
+            }
+            catch (InvalidOperationException ex)
+            {
+                context.Response.Headers.Append("HX-Trigger",
+                    $$$"""{"showToast":{"message":{{{System.Text.Json.JsonSerializer.Serialize(ex.Message)}}},"type":"error"}}""");
+                return Results.BadRequest();
+            }
+        });
+
+        app.MapPost("/api/session/{id:int}/restore", async (int id, SessionService sessionService, CancellationToken ct) =>
+        {
+            var ok = await sessionService.RestoreSessionAsync(id, ct);
+            return ok ? Results.Ok() : Results.NotFound();
+        });
     }
 }
 
