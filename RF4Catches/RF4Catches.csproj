@@ -22,7 +22,13 @@
       <Folder Include="Data\captures\" />
       <Folder Include="Data\debug-crops\" />
       <Folder Include="OcrTestImages\" />
+      <Folder Include="Services\History\" />
       <Folder Include="tessdata\" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+        <Content Update="data\**\*" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
 </Project>

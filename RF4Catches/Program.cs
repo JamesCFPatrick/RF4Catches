@@ -22,6 +22,8 @@ builder.Services.AddSingleton<FishNameMatcher>();
 builder.Services.AddSingleton<CatchOcrParser>();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<HistoryDashboardService>();
+builder.Services.AddSingleton<HistoryDashboardService>();
+
 
 builder.Services.Configure<HostOptions>(options =>
 {
@@ -62,12 +64,33 @@ await using (var db = await app.Services.GetRequiredService<IDbContextFactory<Ap
     }
 }
 
+// Optional fake data seeding. Safe to leave in — gated behind a CLI flag.
+// Usage:
+//   dotnet run -- --seed-fake
+//   dotnet run -- --seed-fake --seed-count 50 --force
+if (args.Contains("--seed-fake"))
+{
+    var count = 50;
+    var countIndex = Array.IndexOf(args, "--seed-count");
+    if (countIndex >= 0 && countIndex + 1 < args.Length &&
+        int.TryParse(args[countIndex + 1], out var parsed))
+        count = parsed;
+
+    var force = args.Contains("--force");
+
+    await using var seedDb = await app.Services
+        .GetRequiredService<IDbContextFactory<AppDbContext>>()
+        .CreateDbContextAsync();
+    await SeedData.SeedFakeSessionsAsync(seedDb, count, force);
+}
+
 // Map all endpoint groups
 app.MapSessionEndpoints();
 app.MapDashboardEndpoints();
 app.MapHistoryEndpoints();
 app.MapCaptureEndpoints();
 app.MapRoiEndpoints();
+app.MapAnalyticsEndpoints();
 
 app.Run();
 
@@ -156,3 +179,4 @@ static async Task BackfillCatchFieldsAsync(AppDbContext db, CatchOcrParser parse
     if (catches.Count > 0)
         await db.SaveChangesAsync();
 }
+
