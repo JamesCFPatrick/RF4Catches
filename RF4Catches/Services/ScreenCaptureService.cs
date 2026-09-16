@@ -1,4 +1,5 @@
-﻿using OpenCvSharp;
+﻿using System.Drawing.Imaging;
+using OpenCvSharp;
 using Size = System.Drawing.Size;
 
 namespace RF4Catches.Services;
@@ -178,26 +179,56 @@ public IReadOnlyList<string> DetectTagRarities(string capturePath, OcrRegion reg
     var yellowPixels = 0;
     var sampledPixels = 0;
 
-    for (var y = crop.Top; y < crop.Bottom; y += 2)
+    // Lock the bitmap once. The crop is small (a rarity badge), so we lock
+    // the whole thing rather than a sub-rect — simpler and just as fast.
+    var data = source.LockBits(
+        new Rectangle(0, 0, source.Width, source.Height),
+        ImageLockMode.ReadOnly,
+        PixelFormat.Format32bppArgb);
+
+    try
     {
-        for (var x = crop.Left; x < crop.Right; x += 2)
+        var stride = data.Stride;
+        var scan0 = data.Scan0;
+
+        // Copy the entire bitmap into a managed byte array once. For a
+        // full-screen capture at 1080p that's ~8 MB — a single memcpy.
+        var byteCount = stride * source.Height;
+        var pixels = new byte[byteCount];
+        System.Runtime.InteropServices.Marshal.Copy(scan0, pixels, 0, byteCount);
+
+        for (var y = crop.Top; y < crop.Bottom; y += 2)
         {
-            var pixel = source.GetPixel(x, y);
-            var max = Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) / 255d;
-            var min = Math.Min(pixel.R, Math.Min(pixel.G, pixel.B)) / 255d;
-            var saturation = max == 0 ? 0 : (max - min) / max;
-            var hue = GetHue(pixel.R / 255d, pixel.G / 255d, pixel.B / 255d, max, min);
-            if (max >= 0.35)
+            var rowStart = y * stride;
+            for (var x = crop.Left; x < crop.Right; x += 2)
             {
-                var isVivid = saturation >= 0.35;
-                var isPastel = saturation >= 0.22;
-                if (hue is >= 40 and < 55 && isVivid) yellowPixels++;
-                else if (hue is >= 55 and <= 155 && isVivid) greenPixels++;
-                else if (hue is >= 190 and < 245 && isVivid) bluePixels++;
-                else if (hue is >= 245 and <= 330 && isPastel) purplePixels++;
+                var offset = rowStart + x * 4;
+                var b = pixels[offset];
+                var g = pixels[offset + 1];
+                var r = pixels[offset + 2];
+                // alpha at offset + 3, unused
+
+                var max = Math.Max(r, Math.Max(g, b)) / 255d;
+                var min = Math.Min(r, Math.Min(g, b)) / 255d;
+                var saturation = max == 0 ? 0 : (max - min) / max;
+                var hue = GetHue(r / 255d, g / 255d, b / 255d, max, min);
+
+                if (max >= 0.35)
+                {
+                    var isVivid = saturation >= 0.35;
+                    var isPastel = saturation >= 0.22;
+                    if (hue is >= 40 and < 55 && isVivid) yellowPixels++;
+                    else if (hue is >= 55 and <= 155 && isVivid) greenPixels++;
+                    else if (hue is >= 190 and < 245 && isVivid) bluePixels++;
+                    else if (hue is >= 245 and <= 330 && isPastel) purplePixels++;
+                }
+                sampledPixels++;
             }
-            sampledPixels++;
         }
+    }
+    finally
+    {
+        source.UnlockBits(data);
     }
 
     var hits = new List<string>(4);

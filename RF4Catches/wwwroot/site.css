@@ -1,140 +1,215 @@
 :root {
-  --rf4-glow: rgba(34, 211, 238, 0.14);
-  --rf4-purple: #8b5cf6;
-  --rf4-cyan: #22d3ee;
+    --rf4-glow: rgba(34, 211, 238, 0.14);
+    --rf4-purple: #8b5cf6;
+    --rf4-cyan: #22d3ee;
 }
 
 body.app-shell {
-  --color-base-content: oklch(92% 0.004 286.32);
-  --color-base-100: oklch(18% 0.025 260);
-  --color-base-200: oklch(13% 0.025 260);
-  --color-base-300: oklch(28% 0.025 260);
-  color: #e5e7eb;
-  background:
-    radial-gradient(circle at 10% 0%, var(--rf4-glow), transparent 32rem),
-    radial-gradient(circle at 90% 10%, rgba(139, 92, 246, 0.14), transparent 28rem),
-    linear-gradient(135deg, #090d18 0%, #111827 52%, #0b1020 100%);
-  background-attachment: fixed;
+    --color-base-content: oklch(92% 0.004 286.32);
+    --color-base-100: oklch(18% 0.025 260);
+    --color-base-200: oklch(13% 0.025 260);
+    --color-base-300: oklch(28% 0.025 260);
+    color: #e5e7eb;
+    background:
+            radial-gradient(circle at 10% 0%, var(--rf4-glow), transparent 32rem),
+            radial-gradient(circle at 90% 10%, rgba(139, 92, 246, 0.14), transparent 28rem),
+            linear-gradient(135deg, #090d18 0%, #111827 52%, #0b1020 100%);
+    background-attachment: fixed;
 }
 
 .app-shell .card,
 .app-shell .stat,
 .app-shell section.border {
-  color: #e5e7eb;
-  border-color: rgba(148, 163, 184, 0.2);
-  background-color: rgba(15, 23, 42, 0.76);
-  box-shadow: 0 18px 45px rgba(2, 6, 23, 0.28);
-  backdrop-filter: blur(14px);
+    color: #e5e7eb;
+    border-color: rgba(148, 163, 184, 0.2);
+    background-color: rgba(15, 23, 42, 0.76);
+    box-shadow: 0 18px 45px rgba(2, 6, 23, 0.28);
+    backdrop-filter: blur(14px);
 }
 
 .app-shell .btn-primary {
-  border: 0;
-  background: linear-gradient(135deg, var(--rf4-cyan), var(--rf4-purple));
-  color: #07111f;
+    border: 0;
+    background: linear-gradient(135deg, var(--rf4-cyan), var(--rf4-purple));
+    color: #07111f;
 }
 
 .app-shell .btn-primary:hover {
-  filter: brightness(1.12);
+    filter: brightness(1.12);
 }
 
 .app-shell h1,
 .app-shell h2,
 .app-shell h3 {
-  letter-spacing: -0.025em;
+    letter-spacing: -0.025em;
 }
 
 .app-shell header > div:first-child > div:first-child {
-  box-shadow: 0 0 28px var(--rf4-glow);
+    box-shadow: 0 0 28px var(--rf4-glow);
 }
 
 .app-shell .badge-success {
-  background-color: #15803d;
-  color: #dcfce7;
+    background-color: #15803d;
+    color: #dcfce7;
 }
 
 .app-shell .badge-warning {
-  background-color: #a16207;
-  color: #fef3c7;
+    background-color: #a16207;
+    color: #fef3c7;
 }
 
+/* ---------- Catch card base ---------- */
+
 .app-shell .catch-card {
-  position: relative;
-  overflow: hidden;
-  transform: perspective(900px) rotateX(var(--balatro-rotate-x, 0deg)) rotateY(var(--balatro-rotate-y, 0deg)) translateY(var(--balatro-lift, 0px)) scale(var(--balatro-scale, 1));
-  transform-style: preserve-3d;
-  transition: box-shadow 180ms ease, border-color 180ms ease;
-  will-change: transform;
+    position: relative;
+    overflow: hidden;
+    transform: perspective(900px)
+    rotateX(var(--balatro-rotate-x, 0deg))
+    rotateY(var(--balatro-rotate-y, 0deg))
+    translateY(var(--balatro-lift, 0px))
+    scale(var(--balatro-scale, 1));
+    transform-style: preserve-3d;
+    transition: box-shadow 180ms ease, border-color 180ms ease;
+    will-change: transform;
 }
 
 .app-shell .catch-card::before {
-  position: absolute;
-  inset: -80%;
-  z-index: 0;
-  background: linear-gradient(115deg, transparent 35%, rgba(34, 211, 238, 0.2) 45%, rgba(236, 72, 153, 0.2) 52%, transparent 64%);
-  background-position: var(--balatro-shine-x, 50%) var(--balatro-shine-y, 50%);
-  content: "";
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-35%) rotate(12deg);
-  transition: opacity 180ms ease, transform 500ms ease;
+    position: absolute;
+    inset: -80%;
+    z-index: 0;
+    background: linear-gradient(
+            115deg,
+            transparent 35%,
+            rgb(200 205 212 / 42%) 45%,
+            rgb(180 185 195 / 38%) 52%,
+            transparent 64%
+    );
+    background-position: var(--balatro-shine-x, 50%) var(--balatro-shine-y, 50%);
+    content: "";
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-35%) rotate(12deg);
+    transition: opacity 180ms ease, transform 500ms ease;
 }
 
 .app-shell .catch-card > * {
-  position: relative;
-  z-index: 1;
+    position: relative;
+    z-index: 1;
 }
 
 .app-shell .catch-card:hover {
-  border-color: rgba(34, 211, 238, 0.55);
-  box-shadow: 0 22px 48px rgba(2, 6, 23, 0.5), 0 0 24px rgba(139, 92, 246, 0.18);
+    border-color: rgba(200, 205, 212, 0.55);
+    box-shadow: 0 22px 48px rgba(2, 6, 23, 0.5), 0 0 24px rgba(200, 205, 212, 0.18);
 }
 
 .app-shell .catch-card:hover::before {
-  opacity: 1;
-  transform: translateX(35%) rotate(12deg);
+    opacity: 1;
+    transform: translateX(35%) rotate(12deg);
 }
 
-.app-shell .prism-card {
-  border-color: rgba(226, 232, 240, 0.42);
-  background-image:
-    radial-gradient(circle at 0% 0%, rgba(248, 113, 113, 0.5), transparent 27%),
-    radial-gradient(circle at 100% 0%, rgba(192, 132, 252, 0.5), transparent 27%),
-    radial-gradient(circle at 0% 100%, rgba(34, 211, 238, 0.5), transparent 27%),
-    radial-gradient(circle at 100% 100%, rgba(250, 204, 21, 0.5), transparent 27%);
-  background-size: 125% 125%;
-  background-position: 0 0, 100% 0, 0,100%, 100% 100%;
-  transition: background-size 300ms ease, border-color 180ms ease;
+.app-shell .catch-card:hover {
+    border-color: rgba(34, 211, 238, 0.55);
+    box-shadow: 0 22px 48px rgba(2, 6, 23, 0.5), 0 0 24px rgba(139, 92, 246, 0.18);
 }
 
-.app-shell .prism-card:hover {
-  border-color: rgba(255, 255, 255, 0.75);
-  background-size: 145% 145%;
+.app-shell .catch-card:hover::before {
+    opacity: 1;
+    transform: translateX(35%) rotate(12deg);
 }
 
+/* ---------- Rarity shine tints ----------
+   These MUST come after .catch-card::before — same specificity, so
+   source order decides which gradient wins. */
 
-/* Thin, theme-aware scrollbar */
+.app-shell .card-valuable::before {
+    background: linear-gradient(
+            115deg,
+            transparent 35%,
+            rgba(34, 197, 94, 0.22) 45%,
+            rgba(22, 163, 74, 0.20) 52%,
+            transparent 64%
+    );
+}
+
+.app-shell .card-trophy::before {
+    background: linear-gradient(
+            115deg,
+            transparent 35%,
+            rgb(255 200 80 / 55%) 45%,
+            rgb(245 175 60 / 50%) 52%,
+            transparent 64%
+    );
+}
+
+.app-shell .card-rare::before {
+    background: linear-gradient(
+            115deg,
+            transparent 35%,
+            rgb(180 120 255 / 55%) 45%,
+            rgb(150 90 240 / 50%) 52%,
+            transparent 64%
+    );
+}
+
+.app-shell .card-rare-trophy::before {
+    background: linear-gradient(
+            115deg,
+            transparent 30%,
+            rgb(130 180 255 / 55%) 42%,
+            rgb(180 150 255 / 45%) 50%,
+            rgb(255 200 80 / 55%) 58%,
+            transparent 70%
+    );
+}
+
+/* Hover glow per rarity */
+.app-shell .card-valuable:hover {
+    box-shadow: 0 22px 48px rgba(2, 6, 23, 0.5), 0 0 24px rgb(200 205 212 / 26%);
+}
+
+.app-shell .card-trophy:hover {
+    box-shadow: 0 22px 48px rgba(2, 6, 23, 0.5), 0 0 24px rgb(255 200 80 / 28%);
+}
+
+.app-shell .card-rare:hover {
+    box-shadow: 0 22px 48px rgba(2, 6, 23, 0.5), 0 0 24px rgb(180 120 255 / 28%);
+}
+
+.app-shell .card-rare-trophy:hover {
+    box-shadow: 0 22px 48px rgba(2, 6, 23, 0.5), 0 0 24px rgb(130 180 255 / 32%);
+    border-color: rgba(200, 220, 255, 0.65);
+}
+
+/* Rare Trophy shows a two-tone background at rest */
+.app-shell .card-rare-trophy {
+    background-image:
+            radial-gradient(circle at 0% 0%, rgb(130 180 255 / 28%), transparent 45%),
+            radial-gradient(circle at 100% 100%, rgb(255 200 80 / 28%), transparent 45%);
+    border-color: rgba(180, 210, 255, 0.45);
+}
+
+/* ---------- Thin, theme-aware scrollbar ---------- */
 .scrollbar-slim {
-  scrollbar-width: thin;
-  scrollbar-color: var(--fallback-bc, oklch(var(--bc) / 0.3)) transparent;
+    scrollbar-width: thin;
+    scrollbar-color: var(--fallback-bc, oklch(var(--bc) / 0.3)) transparent;
 }
 
 .scrollbar-slim::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+    width: 8px;
+    height: 8px;
 }
 
 .scrollbar-slim::-webkit-scrollbar-track {
-  background: transparent;
+    background: transparent;
 }
 
 .scrollbar-slim::-webkit-scrollbar-thumb {
-  background-color: oklch(var(--bc) / 0.25);
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
+    background-color: oklch(var(--bc) / 0.25);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
 }
 
 .scrollbar-slim::-webkit-scrollbar-thumb:hover {
-  background-color: oklch(var(--bc) / 0.45);
-  background-clip: padding-box;
+    background-color: oklch(var(--bc) / 0.45);
+    background-clip: padding-box;
 }
